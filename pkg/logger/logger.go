@@ -1,97 +1,71 @@
 package logger
 
 import (
+	"fmt"
+	"io"
 	"os"
-	"sync"
-	"time"
+	"path/filepath"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// Logger 封装了 zerolog.Logger 并包含同步机制
-type Logger struct {
-	logger zerolog.Logger
-	mutex  sync.RWMutex
-}
+// NewLogger 创建新的日志记录器
+func NewLogger(logPath string, logLevel string) (*zerolog.Logger, error) {
+	// 设置日志级别
+	level, err := zerolog.ParseLevel(logLevel)
+	if err != nil {
+		level = zerolog.InfoLevel
+	}
+	zerolog.SetGlobalLevel(level)
 
-// consoleWriter 用于控制台输出
-var consoleWriter = zerolog.ConsoleWriter{
-	Out:        os.Stdout,
-	TimeFormat: time.RFC3339,
-}
+	// 准备输出写入器
+	var writers []io.Writer
 
-// NewLogger 初始化日志系统
-func NewLogger(debug bool) *Logger {
-	l := &Logger{}
+	// 总是添加控制台输出
+	writers = append(writers, zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		TimeFormat: "2006-01-02 15:04:05",
+	})
 
-	// 设置全局日志级别
-	if debug {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	} else {
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	// 如果指定了日志文件，添加文件输出
+	if logPath != "" {
+		// 确保日志目录存在
+		if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+			return nil, fmt.Errorf("creating log directory: %w", err)
+		}
+
+		// 配置日志轮转
+		fileWriter := &lumberjack.Logger{
+			Filename:   logPath,
+			MaxSize:    100, // 每个日志文件最大100MB
+			MaxBackups: 3,   // 保留3个旧文件
+			MaxAge:     28,  // 保留28天
+			Compress:   true,
+		}
+
+		writers = append(writers, fileWriter)
 	}
 
-	// 初始化 MultiLevelWriter，仅包含控制台输出
-	multi := zerolog.MultiLevelWriter(consoleWriter)
+	// 创建多输出写入器
+	mw := zerolog.MultiLevelWriter(writers...)
 
-	// 创建初始 logger
-	l.logger = zerolog.New(multi).
-		With().
-		Timestamp().
-		Caller().
-		Logger()
+	// 创建并配置logger
+	logger := zerolog.New(mw).With().Timestamp().Logger()
 
-	// 设置全局 logger
-	log.Logger = l.logger
-
-	return l
+	return &logger, nil
 }
 
-// GetLogger 返回带有上下文的日志记录器
-func (l *Logger) GetLogger(component string) zerolog.Logger {
-	l.mutex.RLock()
-	defer l.mutex.RUnlock()
-
-	return l.logger.With().
-		Str("component", component).
-		Logger()
+// WithComponent 为日志添加组件标识
+func WithComponent(logger zerolog.Logger, component string) zerolog.Logger {
+	return logger.With().Str("component", component).Logger()
 }
 
-// SetLogOutput 设置额外的日志输出（如文件）
-func (l *Logger) SetLogOutput(logFilePath string) {
-	// 使用 lumberjack 进行日志轮转
-	fileWriter := &lumberjack.Logger{
-		Filename:   logFilePath,
-		MaxSize:    100, // megabytes
-		MaxBackups: 3,
-		MaxAge:     28,   // days
-		Compress:   true, // 压缩旧文件
+// WithFields 为日志添加自定义字段
+func WithFields(logger zerolog.Logger, fields map[string]interface{}) zerolog.Logger {
+	context := logger.With()
+	for k, v := range fields {
+		context = context.Interface(k, v)
 	}
-
-	// 创建新的 MultiLevelWriter，包含控制台和文件输出
-	multi := zerolog.MultiLevelWriter(consoleWriter, fileWriter)
-
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-
-	// 更新 logger 的输出
-	l.logger = zerolog.New(multi).
-		With().
-		Timestamp().
-		Caller().
-		Logger()
-
-	// 更新全局 logger
-	log.Logger = l.logger
-}
-
-// 新增一个 provider
-func provideLogger(debug bool, logFile string) *Logger {
-	logger := NewLogger(debug)
-	if logFile != "" {
-		logger.SetLogOutput(logFile)
-	}
-	return logger
+	return context.Logger()
 }

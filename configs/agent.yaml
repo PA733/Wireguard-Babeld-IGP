@@ -1,0 +1,27 @@
+# Agent配置文件
+node_id: 1  # 节点ID
+token: "your-node-token"  # 节点认证令牌
+
+# 服务端连接信息
+server:
+  address: "http://localhost:8080"  # 服务器地址
+  tls:
+    enabled: false
+    ca_cert: "certs/ca.crt"  # CA证书路径
+
+# WireGuard配置
+wireguard:
+  config_path: "data/wireguard/wg0.conf"  # WireGuard配置文件路径
+  bin_path: "/usr/bin/wg"                 # wg命令路径
+
+# Babeld配置
+babel:
+  config_path: "data/babel/babeld.conf"  # Babeld配置文件路径
+  bin_path: "/usr/sbin/babeld"          # babeld命令路径
+
+# 运行时配置
+runtime:
+  log_path: "data/agent.log"  # 日志文件路径
+  log_level: "info"           # 日志级别 (debug/info/warn/error)
+  dry_run: false             # 是否为调试模式
+  metrics_port: 9100         # 指标监控端口 

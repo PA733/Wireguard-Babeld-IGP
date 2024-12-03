@@ -3,18 +3,13 @@ package sqlite
 const schema = `
 -- 节点表
 CREATE TABLE IF NOT EXISTS nodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    ipv4_prefix TEXT NOT NULL,
-    ipv6_prefix TEXT NOT NULL,
-    link_local_addr TEXT NOT NULL,
-    endpoint TEXT NOT NULL,
-    public_key TEXT NOT NULL,
-    private_key TEXT NOT NULL,
-    status TEXT NOT NULL,
-    token TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL
+    id INTEGER PRIMARY KEY,
+    wireguard TEXT NOT NULL,
+    babel TEXT NOT NULL,
+    node_info TEXT NOT NULL,
+    network TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
 );
 
 -- 任务表

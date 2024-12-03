@@ -1,0 +1,40 @@
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 8080
+  tls:
+    enabled: false
+    cert: "certs/server.crt"
+    key: "certs/server.key"
+
+# 网络配置
+network:
+  base_port: 36420
+  ipv4_range: "10.42.0.0/16"
+  ipv4_template: "10.42.{node}.{peer}/32"
+  ipv4_node_template: "10.42.{node}.0"
+  ipv6_range: "2a13:a5c7:21ff::/48"
+  ipv6_template: "2a13:a5c7:21ff:{node:x}::{peer:x}/80"
+  ipv6_node_template: "2a13:a5c7:21ff:{node:x}::"
+  link_local_template: "fe80::{node}:{peer}/64"
+  link_local_net: "fe80::/64"
+  babel_multicast: "ff02::1:6/128"
+  babel_port: 6696
+
+# 日志配置
+log:
+  debug: true
+  file: "data/mesh-server.log"
+
+# 存储配置
+storage:
+  type: "sqlite"  # 可选: sqlite, postgres
+  sqlite:
+    path: "data/mesh.db"
+  postgres:
+    host: "localhost"
+    port: 5432
+    user: "meshuser"
+    password: "meshpass"
+    dbname: "mesh"
+    sslmode: "disable" 

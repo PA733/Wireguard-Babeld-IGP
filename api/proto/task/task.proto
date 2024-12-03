@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package task;
+
+option go_package = "mesh-backend/api/proto/task";
+
+// 任务服务定义
+service TaskService {
+  // 节点注册
+  rpc Register(RegisterRequest) returns (RegisterResponse) {}
+  
+  // 订阅任务
+  rpc SubscribeTasks(SubscribeRequest) returns (stream Task) {}
+  
+  // 更新任务状态
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (UpdateTaskStatusResponse) {}
+  
+  // 心跳
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
+}
+
+// 注册请求
+message RegisterRequest {
+  int32 node_id = 1;
+  string token = 2;
+}
+
+// 注册响应
+message RegisterResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// 订阅请求
+message SubscribeRequest {
+  int32 node_id = 1;
+  string token = 2;
+}
+
+// 任务定义
+message Task {
+  string id = 1;
+  string type = 2;
+  map<string, string> params = 3;
+}
+
+// 更新任务状态请求
+message UpdateTaskStatusRequest {
+  string task_id = 1;
+  string status = 2;
+  string error = 3;
+  string details = 4;
+}
+
+// 更新任务状态响应
+message UpdateTaskStatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// 心跳请求
+message HeartbeatRequest {
+  int32 node_id = 1;
+  string token = 2;
+  map<string, string> status = 3;
+}
+
+// 心跳响应
+message HeartbeatResponse {
+  bool success = 1;
+  string message = 2;
+  map<string, string> commands = 3;
+} 

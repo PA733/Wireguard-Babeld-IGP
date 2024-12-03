@@ -35,3 +35,6 @@ wire_gen.go
 
 # Data
 data/*
+
+# Build
+bin/*

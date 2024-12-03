@@ -1,0 +1,27 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+network:
+  base_port: 36420
+  ipv4_range: "10.42.0.0/16"
+  ipv6_range: "2a13:a5c7:21ff::/48"
+  link_local_net: "fe80::/64"
+  babel_multicast: "ff02::1:6/128"
+  babel_port: 6696
+
+log:
+  debug: true
+  file: "mesh-backend.log"
+
+storage:
+  type: "sqlite"
+  sqlite:
+    path: "data/mesh.db"
+  postgres:
+    host: "localhost"
+    port: 5432
+    user: "meshuser"
+    password: "meshpass"
+    dbname: "mesh"
+    sslmode: "disable"

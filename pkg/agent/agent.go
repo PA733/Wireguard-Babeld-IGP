@@ -279,8 +279,8 @@ func (a *Agent) handleConfigUpdate(task *pb.Task) error {
 
 // updateWireGuardConfig 更新 WireGuard 配置
 func (a *Agent) updateWireGuardConfig(configs map[string]string) error {
-	for peerID, config := range configs {
-		configPath := filepath.Join(a.config.WireGuard.ConfigPath, fmt.Sprintf("%s%s.conf", a.config.WireGuard.Prefix, peerID))
+	for peerName, config := range configs {
+		configPath := filepath.Join(a.config.WireGuard.ConfigPath, fmt.Sprintf("%s%s.conf", a.config.WireGuard.Prefix, peerName))
 		if !a.config.Runtime.DryRun {
 			if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
 				return fmt.Errorf("writing wireguard config: %w", err)
@@ -290,7 +290,7 @@ func (a *Agent) updateWireGuardConfig(configs map[string]string) error {
 		}
 
 		// 重启 WireGuard 接口
-		if err := a.RestartWireGuard(fmt.Sprintf("%s%s", a.config.WireGuard.Prefix, peerID)); err != nil {
+		if err := a.RestartWireGuard(fmt.Sprintf("%s%s", a.config.WireGuard.Prefix, peerName)); err != nil {
 			return fmt.Errorf("restarting wireguard: %w", err)
 		}
 	}
@@ -312,6 +312,7 @@ func (a *Agent) RestartWireGuard(interfaceName string) error {
 
 // updateBabeldConfig 更新 Babeld 配置
 func (a *Agent) updateBabeldConfig(config string) error {
+	config = strings.ReplaceAll(config, "{WGPrefix}", a.config.WireGuard.Prefix)
 	if !a.config.Runtime.DryRun {
 		if err := os.WriteFile(a.config.Babel.ConfigPath, []byte(config), 0644); err != nil {
 			return fmt.Errorf("writing babeld config: %w", err)

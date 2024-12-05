@@ -188,6 +188,11 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 			continue
 		}
 
+		IPv4Address := strings.Replace(s.config.Network.IPv4Template, "{node}", fmt.Sprintf("%d", node.ID), -1)
+		IPv4Address = strings.Replace(IPv4Address, "{peer}", fmt.Sprintf("%d", peer.ID), -1)
+		IPv6Address := strings.Replace(s.config.Network.IPv6Template, "{node:x}", fmt.Sprintf("%x", node.ID), -1)
+		IPv6Address = strings.Replace(IPv6Address, "{peer:x}", fmt.Sprintf("%x", peer.ID), -1)
+
 		// 准备模板数据
 		data := struct {
 			PrivateKey  string
@@ -202,8 +207,8 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 		}{
 			PrivateKey:  node.PrivateKey,
 			ListenPort:  s.config.Network.BasePort + peer.ID,
-			IPv4Address: strings.Replace(s.config.Network.IPv4Template, "{node}", fmt.Sprintf("%d", node.ID), -1),
-			IPv6Address: strings.Replace(s.config.Network.IPv6Template, "{node:x}", fmt.Sprintf("%x", node.ID), -1),
+			IPv4Address: IPv4Address,
+			IPv6Address: IPv6Address,
 		}
 
 		// 添加对等节点信息
@@ -226,7 +231,7 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 			return nil, fmt.Errorf("executing wireguard template: %w", err)
 		}
 
-		configs[fmt.Sprintf("%d", peer.ID)] = buf.String()
+		configs[peer.Name] = buf.String()
 	}
 
 	return configs, nil
@@ -257,7 +262,7 @@ func (s *ConfigService) generateBabeldConfig(node *types.NodeConfig, peers []*ty
 			continue
 		}
 		data.Interfaces = append(data.Interfaces, struct{ Name string }{
-			Name: fmt.Sprintf("wg%d", peer.ID),
+			Name: peer.Name,
 		})
 	}
 

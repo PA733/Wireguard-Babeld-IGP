@@ -46,7 +46,7 @@ templates:
     
     # Interface configurations
     {{- range .Interfaces }}
-    interface {{ .Name }} type tunnel
+    interface {WGPrefix}{{ .Name }} type tunnel
     {{- end }}
     
     # IPv4 routes

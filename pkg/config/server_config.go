@@ -34,6 +34,12 @@ type ServerConfig struct {
 		BabelPort         int    `yaml:"babel_port"`
 	} `yaml:"network"`
 
+	// 配置模板
+	Templates struct {
+		WireGuard string `yaml:"wireguard"`
+		Babel     string `yaml:"babel"`
+	} `yaml:"templates"`
+
 	// 日志配置
 	Log struct {
 		Debug bool   `yaml:"debug"`

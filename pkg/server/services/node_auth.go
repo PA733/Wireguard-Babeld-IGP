@@ -4,18 +4,22 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"sync"
+
+	"github.com/rs/zerolog"
 )
 
 // NodeAuthenticator 实现节点认证
 type NodeAuthenticator struct {
 	tokens map[int]string
 	mu     sync.RWMutex
+	logger zerolog.Logger
 }
 
 // NewNodeAuthenticator 创建节点认证器
-func NewNodeAuthenticator() *NodeAuthenticator {
+func NewNodeAuthenticator(logger zerolog.Logger) *NodeAuthenticator {
 	return &NodeAuthenticator{
 		tokens: make(map[int]string),
+		logger: logger.With().Str("component", "node_auth").Logger(),
 	}
 }
 
@@ -34,6 +38,10 @@ func (a *NodeAuthenticator) RegisterNode(nodeID int, token string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.tokens[nodeID] = token
+	a.logger.Debug().
+		Int("node_id", nodeID).
+		Str("token", token).
+		Msg("Registered node token")
 }
 
 // ValidateToken 验证节点令牌
@@ -41,7 +49,13 @@ func (a *NodeAuthenticator) ValidateToken(nodeID int, token string) bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	storedToken, exists := a.tokens[nodeID]
-	return exists && storedToken == token
+	valid := exists && storedToken == token
+	a.logger.Debug().
+		Int("node_id", nodeID).
+		Bool("token_exists", exists).
+		Bool("token_valid", valid).
+		Msg("Validating node token")
+	return valid
 }
 
 // RemoveNode 移除节点令牌
@@ -49,6 +63,9 @@ func (a *NodeAuthenticator) RemoveNode(nodeID int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.tokens, nodeID)
+	a.logger.Debug().
+		Int("node_id", nodeID).
+		Msg("Removed node token")
 }
 
 // UnregisterNode 注销节点（与 RemoveNode 相同）

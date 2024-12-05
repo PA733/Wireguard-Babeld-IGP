@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -47,6 +46,7 @@ func (h *UpdateHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 		return &types.TaskResult{
 			Status:    types.TaskStatusFailed,
 			Error:     fmt.Sprintf("fetching config: %v", err),
+			Details:   map[string]interface{}{"error": err.Error()},
 			Timestamp: time.Now(),
 		}, err
 	}
@@ -56,7 +56,7 @@ func (h *UpdateHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 		logger.Info().Msg("Dry run mode, skipping actual update")
 		return &types.TaskResult{
 			Status:    types.TaskStatusSuccess,
-			Details:   "Dry run mode, configuration validated",
+			Details:   map[string]interface{}{"message": "Dry run mode, configuration validated"},
 			Timestamp: time.Now(),
 		}, nil
 	}
@@ -66,6 +66,7 @@ func (h *UpdateHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 		return &types.TaskResult{
 			Status:    types.TaskStatusFailed,
 			Error:     fmt.Sprintf("updating wireguard config: %v", err),
+			Details:   map[string]interface{}{"error": err.Error()},
 			Timestamp: time.Now(),
 		}, err
 	}
@@ -75,22 +76,24 @@ func (h *UpdateHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 		return &types.TaskResult{
 			Status:    types.TaskStatusFailed,
 			Error:     fmt.Sprintf("updating babeld config: %v", err),
+			Details:   map[string]interface{}{"error": err.Error()},
 			Timestamp: time.Now(),
 		}, err
 	}
 
 	// 重启服务
-	if err := h.restartServices(); err != nil {
-		return &types.TaskResult{
-			Status:    types.TaskStatusFailed,
-			Error:     fmt.Sprintf("restarting services: %v", err),
-			Timestamp: time.Now(),
-		}, err
-	}
+	// if err := h.restartServices(); err != nil {
+	// 	return &types.TaskResult{
+	// 		Status:    types.TaskStatusFailed,
+	// 		Error:     fmt.Sprintf("restarting services: %v", err),
+	// 		Details:   map[string]interface{}{"error": err.Error()},
+	// 		Timestamp: time.Now(),
+	// 	}, err
+	// }
 
 	return &types.TaskResult{
 		Status:    types.TaskStatusSuccess,
-		Details:   "Configuration updated successfully",
+		Details:   map[string]interface{}{"message": "Configuration updated successfully"},
 		Timestamp: time.Now(),
 	}, nil
 }
@@ -176,57 +179,57 @@ func (h *UpdateHandler) updateBabeldConfig(config string) error {
 }
 
 // restartServices 重启网络服务
-func (h *UpdateHandler) restartServices() error {
-	// 重启WireGuard接口
-	if err := h.restartWireGuard(); err != nil {
-		return fmt.Errorf("restarting wireguard: %w", err)
-	}
+// func (h *UpdateHandler) restartServices() error {
+// 	// 重启WireGuard接口
+// 	if err := h.restartWireGuard(); err != nil {
+// 		return fmt.Errorf("restarting wireguard: %w", err)
+// 	}
 
-	// 重启Babeld服务
-	if err := h.restartBabeld(); err != nil {
-		return fmt.Errorf("restarting babeld: %w", err)
-	}
+// 	// 重启Babeld服务
+// 	if err := h.restartBabeld(); err != nil {
+// 		return fmt.Errorf("restarting babeld: %w", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // restartWireGuard 重启WireGuard接口
-func (h *UpdateHandler) restartWireGuard() error {
-	// 获取配置文件基础名
-	baseFileName := strings.TrimSuffix(h.config.WireGuard.ConfigPath, filepath.Ext(h.config.WireGuard.ConfigPath))
+// func (h *UpdateHandler) restartWireGuard() error {
+// 	// 获取配置文件基础名
+// 	baseFileName := strings.TrimSuffix(h.config.WireGuard.ConfigPath, filepath.Ext(h.config.WireGuard.ConfigPath))
 
-	// 关闭所有WireGuard接口
-	cmd := exec.Command(h.config.WireGuard.BinPath, "down", "wg*")
-	if err := cmd.Run(); err != nil {
-		h.logger.Warn().Err(err).Msg("Failed to down WireGuard interfaces")
-	}
+// 	// 关闭所有WireGuard接口
+// 	cmd := exec.Command(h.config.WireGuard.BinPath, "down", "wg*")
+// 	if err := cmd.Run(); err != nil {
+// 		h.logger.Warn().Err(err).Msg("Failed to down WireGuard interfaces")
+// 	}
 
-	// 启动所有WireGuard接口
-	configs, err := filepath.Glob(baseFileName + "-*.conf")
-	if err != nil {
-		return fmt.Errorf("listing config files: %w", err)
-	}
+// 	// 启动所有WireGuard接口
+// 	configs, err := filepath.Glob(baseFileName + "-*.conf")
+// 	if err != nil {
+// 		return fmt.Errorf("listing config files: %w", err)
+// 	}
 
-	for _, config := range configs {
-		cmd = exec.Command(h.config.WireGuard.BinPath, "up", "-f", config)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("starting interface with config %s: %w", config, err)
-		}
-		h.logger.Info().Str("config", config).Msg("WireGuard interface started")
-	}
+// 	for _, config := range configs {
+// 		cmd = exec.Command(h.config.WireGuard.BinPath, "up", "-f", config)
+// 		if err := cmd.Run(); err != nil {
+// 			return fmt.Errorf("starting interface with config %s: %w", config, err)
+// 		}
+// 		h.logger.Info().Str("config", config).Msg("WireGuard interface started")
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // restartBabeld 重启Babeld服务
-func (h *UpdateHandler) restartBabeld() error {
-	// 停止Babeld服务
-	cmd := exec.Command("systemctl", "stop", "babeld")
-	if err := cmd.Run(); err != nil {
-		h.logger.Warn().Err(err).Msg("Failed to stop babeld service")
-	}
+// func (h *UpdateHandler) restartBabeld() error {
+// 	// 停止Babeld服务
+// 	cmd := exec.Command("systemctl", "stop", "babeld")
+// 	if err := cmd.Run(); err != nil {
+// 		h.logger.Warn().Err(err).Msg("Failed to stop babeld service")
+// 	}
 
-	// 启动Babeld服务
-	cmd = exec.Command("systemctl", "start", "babeld")
-	return cmd.Run()
-}
+// 	// 启动Babeld服务
+// 	cmd = exec.Command("systemctl", "start", "babeld")
+// 	return cmd.Run()
+// }

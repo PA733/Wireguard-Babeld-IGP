@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"mesh-backend/pkg/config"
 	"mesh-backend/pkg/types"
@@ -15,82 +16,45 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// ConfigService 实现配置管理服务
+// ConfigService 配置服务
 type ConfigService struct {
-	config *config.ServerConfig
-	logger zerolog.Logger
-
-	// 配置模板
+	config        *config.ServerConfig
+	nodeAuth      *NodeAuthenticator
 	wgTemplate    *template.Template
 	babelTemplate *template.Template
 	templateMu    sync.RWMutex
+	logger        zerolog.Logger
 
 	// 服务依赖
 	nodeService *NodeService
 	taskService *TaskService
 }
 
-// NewConfigService 创建配置服务实例
-func NewConfigService(cfg *config.ServerConfig, logger zerolog.Logger, nodeService *NodeService, taskService *TaskService) *ConfigService {
-	return &ConfigService{
+// NewConfigService 创建配置服务
+func NewConfigService(cfg *config.ServerConfig, nodeService *NodeService, nodeAuth *NodeAuthenticator, logger zerolog.Logger, taskService *TaskService) (*ConfigService, error) {
+	s := &ConfigService{
 		config:      cfg,
-		logger:      logger.With().Str("service", "config").Logger(),
 		nodeService: nodeService,
+		nodeAuth:    nodeAuth,
+		logger:      logger.With().Str("component", "config_service").Logger(),
 		taskService: taskService,
 	}
-}
 
-// InitTemplates 初始化配置模板
-func (s *ConfigService) InitTemplates() error {
-	s.templateMu.Lock()
-	defer s.templateMu.Unlock()
-
-	// WireGuard配置模板
-	wgTmpl, err := template.New("wireguard").Parse(`
-[Interface]
-PrivateKey = {{.PrivateKey}}
-ListenPort = {{.ListenPort}}
-Address = {{.Address}}
-
-{{range .Peers}}
-[Peer]
-PublicKey = {{.PublicKey}}
-AllowedIPs = {{.AllowedIPs}}
-Endpoint = {{.Endpoint}}
-{{end}}
-`)
+	// 解析 WireGuard 模板
+	wgTmpl, err := template.New("wireguard").Parse(cfg.Templates.WireGuard)
 	if err != nil {
-		return fmt.Errorf("parsing wireguard template: %w", err)
+		return nil, fmt.Errorf("parsing wireguard template: %w", err)
 	}
 	s.wgTemplate = wgTmpl
 
-	// Babeld配置模板
-	babelTmpl, err := template.New("babel").Parse(`
-# Babeld configuration for node {{.NodeID}}
-local-port {{.Port}}
-random-id true
-link-detect true
-
-{{range .Interfaces}}
-interface {{.Name}} type tunnel
-{{end}}
-
-# IPv4 routes
-{{range .IPv4Routes}}
-redistribute ip {{.Network}} ge {{.PrefixLen}} metric {{.Metric}}
-{{end}}
-
-# IPv6 routes
-{{range .IPv6Routes}}
-redistribute ipv6 {{.Network}} ge {{.PrefixLen}} metric {{.Metric}}
-{{end}}
-`)
+	// 解析 Babeld 模板
+	babelTmpl, err := template.New("babel").Parse(cfg.Templates.Babel)
 	if err != nil {
-		return fmt.Errorf("parsing babel template: %w", err)
+		return nil, fmt.Errorf("parsing babel template: %w", err)
 	}
 	s.babelTemplate = babelTmpl
 
-	return nil
+	return s, nil
 }
 
 // GenerateNodeConfig 生成节点配置
@@ -121,10 +85,19 @@ func (s *ConfigService) GenerateNodeConfig(nodeID int) (*types.NodeConfig, error
 
 	// 创建完整的节点配置
 	config := &types.NodeConfig{
+		ID:        node.ID,
+		Name:      node.Name,
+		Token:     node.Token,
+		IPv4:      node.IPv4,
+		IPv6:      node.IPv6,
+		Peers:     node.Peers,
+		Endpoints: node.Endpoints,
+		PublicKey: node.PublicKey,
 		WireGuard: wgConfig,
 		Babel:     babelConfig,
-		NodeInfo:  node.NodeInfo,
 		Network:   node.Network,
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: time.Now(),
 	}
 
 	return config, nil
@@ -133,7 +106,7 @@ func (s *ConfigService) GenerateNodeConfig(nodeID int) (*types.NodeConfig, error
 // UpdateConfig 更新节点配置
 func (s *ConfigService) UpdateConfig(nodeID int, config *types.NodeConfig) error {
 	// 更新节点配置
-	if err := s.nodeService.UpdateNodeConfig(nodeID, config); err != nil {
+	if err := s.nodeService.UpdateNode(nodeID, config); err != nil {
 		return fmt.Errorf("updating node config: %w", err)
 	}
 
@@ -204,161 +177,109 @@ func (s *ConfigService) HandleUpdateConfig(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-// generateWireGuardConfig 生成WireGuard配置
+// generateWireGuardConfig 生成 WireGuard 配置
 func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []*types.NodeConfig) (map[string]string, error) {
 	s.templateMu.RLock()
 	defer s.templateMu.RUnlock()
 
-	// 为每个对等节点生成独立的配置
 	configs := make(map[string]string)
-
 	for _, peer := range peers {
-		if peer.NodeInfo.ID == node.NodeInfo.ID {
+		if peer.ID == node.ID {
 			continue
 		}
 
-		// 准备当前对等节点的配置数据
+		// 准备模板数据
 		data := struct {
-			PrivateKey string
-			ListenPort int
-			Address    string
-			Peers      []struct {
+			PrivateKey  string
+			ListenPort  int
+			IPv4Address string
+			IPv6Address string
+			Peers       []struct {
 				PublicKey  string
 				AllowedIPs string
 				Endpoint   string
 			}
 		}{
-			// 本节点配置
-			PrivateKey: node.NodeInfo.PrivateKey,
-			ListenPort: s.config.Network.BasePort + node.NodeInfo.ID + peer.NodeInfo.ID,
-			Address: fmt.Sprintf("%s, %s, %s",
-				strings.Replace(
-					strings.Replace(s.config.Network.IPv4Template, "{node}", fmt.Sprintf("%d", node.NodeInfo.ID), -1),
-					"{peer}", fmt.Sprintf("%d", peer.NodeInfo.ID), -1,
-				),
-				strings.Replace(
-					strings.Replace(s.config.Network.IPv6Template, "{node:x}", fmt.Sprintf("%x", node.NodeInfo.ID), -1),
-					"{peer:x}", fmt.Sprintf("%x", peer.NodeInfo.ID), -1,
-				),
-				strings.Replace(
-					strings.Replace(s.config.Network.LinkLocalTemplate, "{node}", fmt.Sprintf("%d", node.NodeInfo.ID), -1),
-					"{peer}", fmt.Sprintf("%d", peer.NodeInfo.ID), -1,
-				),
-			),
-			// 对等节点配置（只有一个）
-			Peers: []struct {
-				PublicKey  string
-				AllowedIPs string
-				Endpoint   string
-			}{
-				{
-					PublicKey: peer.NodeInfo.PublicKey,
-					AllowedIPs: fmt.Sprintf("%s, %s, %s",
-						strings.Replace(
-							strings.Replace(s.config.Network.IPv4Template, "{node}", fmt.Sprintf("%d", peer.NodeInfo.ID), -1),
-							"{peer}", fmt.Sprintf("%d", node.NodeInfo.ID), -1,
-						),
-						strings.Replace(
-							strings.Replace(s.config.Network.IPv6Template, "{node:x}", fmt.Sprintf("%x", peer.NodeInfo.ID), -1),
-							"{peer:x}", fmt.Sprintf("%x", node.NodeInfo.ID), -1,
-						),
-						strings.Replace(
-							strings.Replace(s.config.Network.LinkLocalTemplate, "{node}", fmt.Sprintf("%d", peer.NodeInfo.ID), -1),
-							"{peer}", fmt.Sprintf("%d", node.NodeInfo.ID), -1,
-						),
-					),
-					Endpoint: func() string {
-						if len(peer.NodeInfo.Endpoints) > 0 {
-							return peer.NodeInfo.Endpoints[0]
-						}
-						return ""
-					}(),
-				},
-			},
+			PrivateKey:  node.PrivateKey,
+			ListenPort:  s.config.Network.BasePort + peer.ID,
+			IPv4Address: strings.Replace(s.config.Network.IPv4Template, "{node}", fmt.Sprintf("%d", node.ID), -1),
+			IPv6Address: strings.Replace(s.config.Network.IPv6Template, "{node:x}", fmt.Sprintf("%x", node.ID), -1),
 		}
 
-		// 执行模板
-		var result strings.Builder
-		if err := s.wgTemplate.Execute(&result, data); err != nil {
-			return nil, fmt.Errorf("executing template for peer %d: %w", peer.NodeInfo.ID, err)
+		// 添加对等节点信息
+		peerData := struct {
+			PublicKey  string
+			AllowedIPs string
+			Endpoint   string
+		}{
+			PublicKey: peer.PublicKey,
+			AllowedIPs: fmt.Sprintf("%s,%s",
+				strings.Replace(s.config.Network.IPv4NodeTemplate, "{node}", fmt.Sprintf("%d", peer.ID), -1),
+				strings.Replace(s.config.Network.IPv6NodeTemplate, "{node:x}", fmt.Sprintf("%x", peer.ID), -1)),
+			Endpoint: fmt.Sprintf("%s:%d", peer.Endpoints[0], s.config.Network.BasePort+node.ID),
+		}
+		data.Peers = append(data.Peers, peerData)
+
+		// 生成配置
+		var buf strings.Builder
+		if err := s.wgTemplate.Execute(&buf, data); err != nil {
+			return nil, fmt.Errorf("executing wireguard template: %w", err)
 		}
 
-		// 保存配置
-		configs[fmt.Sprintf("%d", peer.NodeInfo.ID)] = result.String()
+		configs[fmt.Sprintf("%d", peer.ID)] = buf.String()
 	}
 
 	return configs, nil
 }
 
-// generateBabeldConfig 生成Babeld配置
+// generateBabeldConfig 生成 Babeld 配置
 func (s *ConfigService) generateBabeldConfig(node *types.NodeConfig, peers []*types.NodeConfig) (string, error) {
 	s.templateMu.RLock()
 	defer s.templateMu.RUnlock()
 
 	// 准备模板数据
 	data := struct {
-		NodeID     int
-		Port       int
-		Interfaces []struct {
-			Name string
-		}
-		IPv4Routes []struct {
-			Network   string
-			PrefixLen int
-			Metric    int
-		}
-		IPv6Routes []struct {
-			Network   string
-			PrefixLen int
-			Metric    int
-		}
+		NodeID         int
+		Port           int
+		UpdateInterval int
+		Interfaces     []struct{ Name string }
+		IPv4Routes     []struct{ Network, PrefixLen, Metric string }
+		IPv6Routes     []struct{ Network, PrefixLen, Metric string }
 	}{
-		NodeID: node.NodeInfo.ID,
-		Port:   s.config.Network.BabelPort,
-		Interfaces: make([]struct {
-			Name string
-		}, 0, len(peers)),
-		IPv4Routes: []struct {
-			Network   string
-			PrefixLen int
-			Metric    int
-		}{
-			{
-				Network:   s.config.Network.IPv4Range,
-				PrefixLen: 24,
-				Metric:    128,
-			},
-		},
-		IPv6Routes: []struct {
-			Network   string
-			PrefixLen int
-			Metric    int
-		}{
-			{
-				Network:   s.config.Network.IPv6Range,
-				PrefixLen: 48,
-				Metric:    128,
-			},
-		},
+		NodeID:         node.ID,
+		Port:           s.config.Network.BabelPort,
+		UpdateInterval: node.Network.BabelInterval,
 	}
 
 	// 添加接口配置
 	for _, peer := range peers {
-		if peer.NodeInfo.ID == node.NodeInfo.ID {
+		if peer.ID == node.ID {
 			continue
 		}
-		data.Interfaces = append(data.Interfaces, struct {
-			Name string
-		}{
-			Name: fmt.Sprintf("wg-%d", peer.NodeInfo.ID),
+		data.Interfaces = append(data.Interfaces, struct{ Name string }{
+			Name: fmt.Sprintf("wg%d", peer.ID),
 		})
 	}
 
-	// 执行模板
-	var result strings.Builder
-	if err := s.babelTemplate.Execute(&result, data); err != nil {
-		return "", fmt.Errorf("executing template: %w", err)
+	// 添加 IPv4 路由
+	data.IPv4Routes = append(data.IPv4Routes, struct{ Network, PrefixLen, Metric string }{
+		Network:   strings.Replace(s.config.Network.IPv4NodeTemplate, "{node}", fmt.Sprintf("%d", node.ID), -1),
+		PrefixLen: "32",
+		Metric:    "128",
+	})
+
+	// 添加 IPv6 路由
+	data.IPv6Routes = append(data.IPv6Routes, struct{ Network, PrefixLen, Metric string }{
+		Network:   strings.Replace(s.config.Network.IPv6NodeTemplate, "{node:x}", fmt.Sprintf("%x", node.ID), -1),
+		PrefixLen: "80",
+		Metric:    "128",
+	})
+
+	// 生成配置
+	var buf strings.Builder
+	if err := s.babelTemplate.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("executing babel template: %w", err)
 	}
 
-	return result.String(), nil
+	return buf.String(), nil
 }

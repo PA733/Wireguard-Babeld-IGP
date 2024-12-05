@@ -60,12 +60,18 @@ func main() {
 
 	// 注册任务处理器
 	agent.RegisterHandler(handlers.NewUpdateHandler(cfg, *log))
+	agent.RegisterHandler(handlers.NewStatusHandler(cfg, *log))
 
 	// 启动Agent
 	if err := agent.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error starting agent: %v\n", err)
 		os.Exit(1)
 	}
+
+	log.Info().
+		Str("version", Version).
+		Str("build_time", BuildTime).
+		Msg("Agent started successfully")
 
 	// 等待信号
 	sigCh := make(chan os.Signal, 1)

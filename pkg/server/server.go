@@ -3,13 +3,16 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
+	"time"
 
-	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/rs/zerolog"
+	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 
 	"mesh-backend/pkg/config"
@@ -30,6 +33,8 @@ type Server struct {
 	statusService *services.StatusService
 
 	// 服务器实例
+	listener   net.Listener
+	mux        cmux.CMux
 	grpcServer *grpc.Server
 	httpServer *http.Server
 	wg         sync.WaitGroup
@@ -48,11 +53,27 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("creating store: %w", err)
 	}
 
+	// 创建共享的 NodeAuthenticator
+	nodeAuth := services.NewNodeAuthenticator(logger)
+
 	// 创建服务实例
-	taskService := services.NewTaskService(cfg, logger, store)
-	nodeService := services.NewNodeService(cfg, logger, store, taskService)
-	configService := services.NewConfigService(cfg, logger, nodeService, taskService)
+	taskService := services.NewTaskService(cfg, logger, store, nodeAuth)
+	nodeService := services.NewNodeService(cfg, logger, store, taskService, nodeAuth)
+	configService, err := services.NewConfigService(cfg, nodeService, nodeAuth, logger, taskService)
+	if err != nil {
+		return nil, fmt.Errorf("creating config service: %w", err)
+	}
 	statusService := services.NewStatusService(cfg, logger, store)
+
+	// 创建基础TCP监听器
+	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("creating listener: %w", err)
+	}
+
+	// 创建多路复用器
+	mux := cmux.New(listener)
 
 	// 创建gRPC服务器
 	var opts []grpc.ServerOption
@@ -63,38 +84,41 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		}
 		opts = append(opts, grpc.Creds(creds))
 	}
+
+	// 添加服务器选项
+	opts = append(opts,
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             5 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionIdle:     15 * time.Second,
+			MaxConnectionAge:      30 * time.Second,
+			MaxConnectionAgeGrace: 5 * time.Second,
+			Time:                  5 * time.Second,
+			Timeout:               1 * time.Second,
+		}),
+	)
+
 	grpcServer := grpc.NewServer(opts...)
 
 	// 注册服务
 	taskService.RegisterGRPC(grpcServer)
 	reflection.Register(grpcServer)
 
-	// 创建gRPC-Web包装器
-	wrappedGrpc := grpcweb.WrapServer(grpcServer,
-		grpcweb.WithOriginFunc(func(origin string) bool {
-			return true // 允许所有来源，生产环境应该限制
-		}),
-	)
-
 	// 创建HTTP处理器
-	mux := http.NewServeMux()
+	httpMux := http.NewServeMux()
 
 	// 注册HTTP路由
-	mux.HandleFunc("/nodes", nodeService.HandleListNodes)
-	mux.HandleFunc("/nodes/", nodeService.HandleGetNode)
-	mux.HandleFunc("/config/", configService.HandleGetConfig)
-	mux.HandleFunc("/status", statusService.HandleGetStatus)
+	httpMux.HandleFunc("/nodes", nodeService.HandleListNodes)
+	httpMux.HandleFunc("/nodes/", nodeService.HandleGetNode)
+	httpMux.HandleFunc("/nodes/config/", nodeService.HandleTriggerConfigUpdate)
+	httpMux.HandleFunc("/config/", configService.HandleGetConfig)
+	httpMux.HandleFunc("/status", statusService.HandleGetStatus)
 
 	// 创建HTTP服务器
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if wrappedGrpc.IsGrpcWebRequest(r) {
-				wrappedGrpc.ServeHTTP(w, r)
-				return
-			}
-			mux.ServeHTTP(w, r)
-		}),
+		Handler: httpMux,
 	}
 
 	return &Server{
@@ -105,6 +129,8 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		configService: configService,
 		taskService:   taskService,
 		statusService: statusService,
+		listener:      listener,
+		mux:           mux,
 		grpcServer:    grpcServer,
 		httpServer:    httpServer,
 	}, nil
@@ -112,35 +138,66 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 
 // Start 启动服务器
 func (s *Server) Start() error {
-	// 初始化服务
-	if err := s.configService.InitTemplates(); err != nil {
-		return fmt.Errorf("initializing config templates: %w", err)
-	}
+	// 设置 gRPC 匹配器
+	grpcL := s.mux.MatchWithWriters(
+		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
+	)
 
-	// 启动HTTP/gRPC服务器
+	// 设置 HTTP 匹配器
+	httpL := s.mux.Match(cmux.HTTP1Fast())
+
+	// 启动 gRPC 服务器
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.logger.Info().
-			Str("address", s.httpServer.Addr).
-			Msg("Starting HTTP/gRPC server")
-		if err := s.httpServer.ListenAndServe(); err != http.ErrServerClosed {
-			s.logger.Error().Err(err).Msg("HTTP/gRPC server error")
+		if err := s.grpcServer.Serve(grpcL); err != nil {
+			s.logger.Error().Err(err).Msg("gRPC server error")
 		}
 	}()
+
+	// 启动 HTTP 服务器
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if err := s.httpServer.Serve(httpL); err != nil && err != http.ErrServerClosed {
+			s.logger.Error().Err(err).Msg("HTTP server error")
+		}
+	}()
+
+	// 启动 cmux
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if err := s.mux.Serve(); err != nil {
+			s.logger.Error().Err(err).Msg("cmux server error")
+		}
+	}()
+
+	s.logger.Info().
+		Str("address", fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)).
+		Bool("tls", s.config.Server.TLS.Enabled).
+		Msg("Server started")
 
 	return nil
 }
 
 // Stop 停止服务器
 func (s *Server) Stop() error {
-	// 停止HTTP服务器
-	if err := s.httpServer.Shutdown(context.Background()); err != nil {
+	// 优雅关闭 HTTP 服务器
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := s.httpServer.Shutdown(ctx); err != nil {
 		s.logger.Error().Err(err).Msg("Error shutting down HTTP server")
 	}
 
-	// 停止gRPC服务器
+	// 优雅关闭 gRPC 服务器
 	s.grpcServer.GracefulStop()
+
+	// 关闭监听器
+	if err := s.listener.Close(); err != nil {
+		s.logger.Error().Err(err).Msg("Error closing listener")
+	}
 
 	// 等待所有服务停止
 	s.wg.Wait()
@@ -150,5 +207,6 @@ func (s *Server) Stop() error {
 		s.logger.Error().Err(err).Msg("Error closing store")
 	}
 
+	s.logger.Info().Msg("Server stopped")
 	return nil
 }

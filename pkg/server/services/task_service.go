@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -45,13 +46,15 @@ type nodeState struct {
 }
 
 // NewTaskService 创建任务服务实例
-func NewTaskService(cfg *config.ServerConfig, logger zerolog.Logger, store store.Store) *TaskService {
+func NewTaskService(cfg *config.ServerConfig, logger zerolog.Logger, store store.Store, nodeAuth *NodeAuthenticator) *TaskService {
 	return &TaskService{
 		config:   cfg,
 		logger:   logger.With().Str("service", "task").Logger(),
 		store:    store,
 		nodes:    make(map[int32]*nodeState),
+		tasks:    make(map[string]*types.Task),
 		taskChan: make(chan *types.Task, 100),
+		nodeAuth: nodeAuth,
 	}
 }
 
@@ -134,7 +137,11 @@ func (s *TaskService) UpdateTaskStatus(ctx context.Context, req *pb.UpdateTaskSt
 	// 更新任务状态
 	task.Status = types.TaskStatus(req.Status)
 	if req.Error != "" {
-		task.Error = req.Error
+		// 将错误信息添加到任务参数中
+		if task.Params == nil {
+			task.Params = make(map[string]string)
+		}
+		task.Params["error"] = req.Error
 	}
 	now := time.Now()
 	task.CompletedAt = &now
@@ -167,11 +174,17 @@ func (s *TaskService) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (
 
 // CreateTask 创建新任务
 func (s *TaskService) CreateTask(taskType types.TaskType, params map[string]interface{}) (*types.Task, error) {
+	// 将参数转换为字符串类型
+	strParams := make(map[string]string)
+	for k, v := range params {
+		strParams[k] = fmt.Sprintf("%v", v)
+	}
+
 	task := &types.Task{
 		ID:        generateTaskID(),
 		Type:      taskType,
 		Status:    types.TaskStatusPending,
-		Params:    params,
+		Params:    strParams,
 		CreatedAt: time.Now(),
 	}
 
@@ -190,17 +203,11 @@ func (s *TaskService) BroadcastTask(task *types.Task) error {
 	s.nodeMu.RLock()
 	defer s.nodeMu.RUnlock()
 
-	// 转换任务参数
-	params := make(map[string]string)
-	for k, v := range task.Params {
-		params[k] = fmt.Sprintf("%v", v)
-	}
-
 	// 创建gRPC任务消息
 	pbTask := &pb.Task{
 		Id:     task.ID,
 		Type:   string(task.Type),
-		Params: params,
+		Params: task.Params,
 	}
 
 	// 广播到所有节点
@@ -224,4 +231,62 @@ func (s *TaskService) BroadcastTask(task *types.Task) error {
 // generateTaskID 生成任务ID
 func generateTaskID() string {
 	return fmt.Sprintf("task-%d", time.Now().UnixNano())
+}
+
+// SaveTask 保存并推送任务
+func (s *TaskService) SaveTask(task *types.Task) error {
+	// 保存任务到存储
+	if err := s.store.SaveTask(task); err != nil {
+		return fmt.Errorf("saving task: %w", err)
+	}
+
+	// 获取目标节点ID
+	nodeIDStr, ok := task.Params["node_id"]
+	if !ok {
+		return fmt.Errorf("node_id not found in task params")
+	}
+	nodeID, err := strconv.ParseInt(nodeIDStr, 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid node_id: %w", err)
+	}
+
+	// 查找节点状态
+	s.nodeMu.RLock()
+	node, exists := s.nodes[int32(nodeID)]
+	s.nodeMu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("node %d not found", int32(nodeID))
+	}
+
+	// 推送任务到节点
+	node.streamLock.Lock()
+	defer node.streamLock.Unlock()
+
+	if node.stream == nil {
+		return fmt.Errorf("node %d stream not available", int32(nodeID))
+	}
+
+	// 转换为 protobuf 任务
+	pbTask := &pb.Task{
+		Id:     task.ID,
+		Type:   string(task.Type),
+		Params: make(map[string]string),
+	}
+	for k, v := range task.Params {
+		pbTask.Params[k] = fmt.Sprintf("%v", v)
+	}
+
+	// 发送任务
+	if err := node.stream.Send(pbTask); err != nil {
+		return fmt.Errorf("sending task: %w", err)
+	}
+
+	s.logger.Info().
+		Str("task_id", task.ID).
+		Str("type", string(task.Type)).
+		Int32("node_id", int32(nodeID)).
+		Msg("Task pushed to node")
+
+	return nil
 }

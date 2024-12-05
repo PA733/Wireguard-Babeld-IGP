@@ -21,6 +21,50 @@ network:
   babel_multicast: "ff02::1:6/128"
   babel_port: 6696
 
+# 配置模板
+templates:
+  wireguard: |
+    [Interface]
+    PrivateKey = {{ .PrivateKey }}
+    ListenPort = {{ .ListenPort }}
+    Address = {{ .IPv4Address }}, {{ .IPv6Address }}
+    
+    {{- range .Peers }}
+    [Peer]
+    PublicKey = {{ .PublicKey }}
+    AllowedIPs = {{ .AllowedIPs }}
+    Endpoint = {{ .Endpoint }}
+    PersistentKeepalive = 25
+    {{- end }}
+
+  babel: |
+    # Babeld configuration for node {{ .NodeID }}
+    local-port {{ .Port }}
+    random-id true
+    link-detect true
+    ipv6-subtrees true
+    
+    # Interface configurations
+    {{- range .Interfaces }}
+    interface {{ .Name }} type tunnel
+    {{- end }}
+    
+    # IPv4 routes
+    {{- range .IPv4Routes }}
+    redistribute ip {{ .Network }} ge {{ .PrefixLen }} metric {{ .Metric }}
+    {{- end }}
+    
+    # IPv6 routes
+    {{- range .IPv6Routes }}
+    redistribute ipv6 {{ .Network }} ge {{ .PrefixLen }} metric {{ .Metric }}
+    {{- end }}
+    
+    # Default settings
+    default update-interval {{ .UpdateInterval }}
+    default enable-timestamps true
+    default max-rtt-penalty 150
+    default port {{ .Port }}
+
 # 日志配置
 log:
   debug: true
@@ -28,7 +72,7 @@ log:
 
 # 存储配置
 storage:
-  type: "sqlite"  # 可选: sqlite, postgres
+  type: "sqlite"
   sqlite:
     path: "data/mesh.db"
   postgres:
@@ -37,4 +81,4 @@ storage:
     user: "meshuser"
     password: "meshpass"
     dbname: "mesh"
-    sslmode: "disable" 
+    sslmode: "disable"

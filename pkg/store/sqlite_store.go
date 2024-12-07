@@ -19,7 +19,7 @@ type SQLiteStore struct {
 // NewSQLiteStore 创建SQLite存储实例
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	// 连接数据库
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}

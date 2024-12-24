@@ -14,6 +14,7 @@ type Store interface {
 	UpdateNode(nodeID int, node *types.NodeConfig) error
 	DeleteNode(nodeID int) error
 	ListNodes() ([]*types.NodeConfig, error)
+	GetOrCreateWireguardConnection(connection *types.WireguardConnection, basePort int) (*types.WireguardConnection, error)
 
 	// 节点状态相关
 	UpdateNodeStatus(nodeID int, status *types.NodeStatus) error

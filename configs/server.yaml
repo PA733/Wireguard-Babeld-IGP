@@ -28,14 +28,15 @@ templates:
     PrivateKey = {{ .PrivateKey }}
     ListenPort = {{ .ListenPort }}
     Address = {{ .IPv4Address }}, {{ .IPv6Address }}
+    Address = fe80::{{ .NodeID }}:{{ .Peer.ID }}/64
+    Table = off
     
-    {{- range .Peers }}
     [Peer]
-    PublicKey = {{ .PublicKey }}
-    AllowedIPs = {{ .AllowedIPs }}
-    Endpoint = {{ .Endpoint }}
+    PublicKey = {{ .Peer.PublicKey }}
+    AllowedIPs = 10.42.0.0/16, 2a13:a5c7:21ff::/48
+    AllowedIPs = fe80::/64, ff02::1:6/128
+    Endpoint = {{ .Peer.Endpoint }}
     PersistentKeepalive = 25
-    {{- end }}
 
   babel: |
     # Babeld configuration for node {{ .NodeID }}
@@ -43,27 +44,45 @@ templates:
     random-id true
     link-detect true
     ipv6-subtrees true
+
+    default type tunnel
+    default split-horizon true
+    default faraway true
+    default unicast true
     
     # Interface configurations
     {{- range .Interfaces }}
     interface {WGPrefix}{{ .Name }} type tunnel
     {{- end }}
     
+    ## Import configurations
     # IPv4 routes
     {{- range .IPv4Routes }}
-    redistribute ip {{ .Network }} ge {{ .PrefixLen }} metric {{ .Metric }}
+    in ip {{ .Network }}/16 eq 24 allow
+    in ip {{ .Network }}/24 eq 32 allow
+    {{- end }}
+    # IPv6 routes
+    {{- range .IPv6Routes }}
+    in ip {{ .Network }}/48 eq 80 allow
+    in ip {{ .Network }}/80 eq 128 allow
+    {{- end }}
+
+
+    ## Advertise configurations
+    # IPv4 routes
+    {{- range .IPv4Routes }}
+    redistribute ip {{ .Network }}/24 eq 32 allow
+    redistribute ip {{ .Network }}/16 eq 24 allow
+    redistribute local ip {{ .Network }}/24 eq 32 allow
     {{- end }}
     
     # IPv6 routes
     {{- range .IPv6Routes }}
-    redistribute ipv6 {{ .Network }} ge {{ .PrefixLen }} metric {{ .Metric }}
+    redistribute ip {{ .Network }}/48 eq 80 allow
+    redistribute ip {{ .Network }}/80 eq 128 allow
     {{- end }}
-    
-    # Default settings
-    default update-interval {{ .UpdateInterval }}
-    default enable-timestamps true
-    default max-rtt-penalty 150
-    default port {{ .Port }}
+
+    redistribute local deny
 
 # 日志配置
 log:

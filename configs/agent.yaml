@@ -17,7 +17,7 @@ wireguard:
 
 # Babeld配置
 babel:
-  config_path: "/etc/babeld/babeld.conf"  # Babeld配置文件路径
+  config_path: "/etc/babeld.conf"  # Babeld配置文件路径
   bin_path: "/usr/sbin/babeld"            # babeld命令路径
 
 # 运行时配置

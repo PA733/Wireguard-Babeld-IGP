@@ -8,7 +8,7 @@ import (
 
 	"mesh-backend/pkg/types"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // SQLiteStore SQLite存储实现
@@ -104,6 +104,23 @@ func (s *SQLiteStore) initialize() error {
 		return fmt.Errorf("creating tasks table: %w", err)
 	}
 
+	// 创建Wireguard连接表
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS wireguard_connections (
+			node_id INTEGER NOT NULL,
+			peer_id INTEGER NOT NULL,
+			port INTEGER NOT NULL,
+			UNIQUE (node_id, peer_id),
+			UNIQUE (port),
+			FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+			FOREIGN KEY (peer_id) REFERENCES nodes(id) ON DELETE CASCADE,
+			CHECK (node_id != peer_id)
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("creating tasks table: %w", err)
+	}
+
 	// 创建索引
 	for _, idx := range []string{
 		`CREATE INDEX IF NOT EXISTS idx_nodes_created_at ON nodes(created_at)`,
@@ -111,6 +128,7 @@ func (s *SQLiteStore) initialize() error {
 		`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_type ON tasks(type)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_wireguard_connections_node_peer ON wireguard_connections(node_id, peer_id)`,
 	} {
 		if _, err := s.db.Exec(idx); err != nil {
 			return fmt.Errorf("creating index: %w", err)
@@ -642,4 +660,80 @@ func (s *SQLiteStore) ListNodeStatus() ([]*types.NodeStatus, error) {
 	}
 
 	return statuses, nil
+}
+
+// GetOrCreateWireguardConnection 获取或创建Wireguard连接
+func (s *SQLiteStore) GetOrCreateWireguardConnection(connection *types.WireguardConnection, basePort int) (*types.WireguardConnection, error) {
+	if connection == nil {
+		return nil, fmt.Errorf("connection cannot be nil")
+	}
+
+	var conn types.WireguardConnection
+
+	// 情况1：如果提供了Port，则根据Port查询连接
+	if connection.Port != 0 {
+		err := s.db.QueryRow(`
+			SELECT node_id, peer_id, port FROM wireguard_connections WHERE port = ?
+		`, connection.Port).Scan(&conn.NodeID, &conn.PeerID, &conn.Port)
+		if err == nil {
+			// 找到了现有的连接
+			return &conn, nil
+		} else if err != sql.ErrNoRows {
+			// 查询出错
+			return nil, fmt.Errorf("querying wireguard connection by port: %w", err)
+		} else {
+			// 未找到连接，返回错误
+			return nil, fmt.Errorf("wireguard connection not found with port %d", connection.Port)
+		}
+	}
+
+	// 情况2：如果提供了NodeID和PeerID，则根据它们查询连接
+	if connection.NodeID != 0 && connection.PeerID != 0 {
+		err := s.db.QueryRow(`
+			SELECT node_id, peer_id, port FROM wireguard_connections 
+			WHERE (node_id = ? AND peer_id = ?) 
+			OR (node_id = ? AND peer_id = ?)
+		`,
+			connection.NodeID, connection.PeerID,
+			connection.PeerID, connection.NodeID,
+		).Scan(&conn.NodeID, &conn.PeerID, &conn.Port)
+		if err == nil {
+			// 找到了现有的连接
+			return &conn, nil
+		} else if err != sql.ErrNoRows {
+			// 查询出错
+			return nil, fmt.Errorf("querying wireguard connection by node_id and peer_id: %w", err)
+		}
+
+		// 未找到连接，需要创建新的连接
+		// 获取当前数据库中最大的端口号
+		var maxPort int
+		err = s.db.QueryRow(`SELECT COALESCE(MAX(port), 0) FROM wireguard_connections`).Scan(&maxPort)
+		if err != nil {
+			return nil, fmt.Errorf("getting max port from wireguard_connections: %w", err)
+		}
+
+		// 新的端口号为 max(basePort, maxPortInDB) + 1
+		newPort := basePort
+		if maxPort >= basePort {
+			newPort = maxPort + 1
+		}
+
+		// 创建新的连接记录
+		_, err = s.db.Exec(`
+			INSERT INTO wireguard_connections (node_id, peer_id, port) VALUES (?, ?, ?)
+		`, connection.NodeID, connection.PeerID, newPort)
+		if err != nil {
+			return nil, fmt.Errorf("inserting new wireguard connection: %w", err)
+		}
+
+		// 返回新的连接
+		conn.NodeID = connection.NodeID
+		conn.PeerID = connection.PeerID
+		conn.Port = newPort
+		return &conn, nil
+	}
+
+	// 输入参数无效，返回错误
+	return nil, fmt.Errorf("invalid connection parameters; must provide either port, or node_id and peer_id")
 }

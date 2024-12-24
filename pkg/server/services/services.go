@@ -410,3 +410,17 @@ func (s *NodeService) HandleTriggerConfigUpdate(w http.ResponseWriter, r *http.R
 
 	w.WriteHeader(http.StatusOK)
 }
+
+func (s *NodeService) GenerateWireguardConnection(nodeID int, peerID int, basePort int) (*types.WireguardConnection, error) {
+	connection := &types.WireguardConnection{
+		NodeID: nodeID,
+		PeerID: peerID,
+	}
+
+	connection, err := s.store.GetOrCreateWireguardConnection(connection, basePort)
+	if err != nil {
+		return nil, fmt.Errorf("get or create wireguard connection: %w", err)
+	}
+
+	return connection, nil
+}

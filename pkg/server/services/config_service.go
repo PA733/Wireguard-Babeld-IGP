@@ -188,6 +188,11 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 			continue
 		}
 
+		wgConn, err := s.nodeService.GenerateWireguardConnection(node.ID, peer.ID, s.config.Network.BasePort)
+		if err != nil {
+			return nil, fmt.Errorf("generating wireguard connection: %w", err)
+		}
+
 		IPv4Address := strings.Replace(s.config.Network.IPv4Template, "{node}", fmt.Sprintf("%d", node.ID), -1)
 		IPv4Address = strings.Replace(IPv4Address, "{peer}", fmt.Sprintf("%d", peer.ID), -1)
 		IPv6Address := strings.Replace(s.config.Network.IPv6Template, "{node:x}", fmt.Sprintf("%x", node.ID), -1)
@@ -199,16 +204,19 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 			ListenPort  int
 			IPv4Address string
 			IPv6Address string
-			Peers       []struct {
+			NodeID      int
+			Peer        struct {
 				PublicKey  string
 				AllowedIPs string
 				Endpoint   string
+				ID         int
 			}
 		}{
 			PrivateKey:  node.PrivateKey,
-			ListenPort:  s.config.Network.BasePort + peer.ID,
+			ListenPort:  wgConn.Port,
 			IPv4Address: IPv4Address,
 			IPv6Address: IPv6Address,
+			NodeID:      node.ID,
 		}
 
 		// 添加对等节点信息
@@ -216,14 +224,16 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 			PublicKey  string
 			AllowedIPs string
 			Endpoint   string
+			ID         int
 		}{
 			PublicKey: peer.PublicKey,
 			AllowedIPs: fmt.Sprintf("%s,%s",
 				strings.Replace(s.config.Network.IPv4NodeTemplate, "{node}", fmt.Sprintf("%d", peer.ID), -1),
 				strings.Replace(s.config.Network.IPv6NodeTemplate, "{node:x}", fmt.Sprintf("%x", peer.ID), -1)),
-			Endpoint: fmt.Sprintf("%s:%d", peer.Endpoints[0], s.config.Network.BasePort+node.ID),
+			Endpoint: fmt.Sprintf("%s:%d", peer.Endpoints[0], wgConn.Port),
+			ID:       peer.ID,
 		}
-		data.Peers = append(data.Peers, peerData)
+		data.Peer = peerData
 
 		// 生成配置
 		var buf strings.Builder

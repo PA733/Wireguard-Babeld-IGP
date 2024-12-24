@@ -12,17 +12,19 @@ import (
 // MemoryStore 内存存储实现
 type MemoryStore struct {
 	sync.RWMutex
-	nodes  map[int]*types.NodeConfig
-	tasks  map[string]*types.Task
-	status map[int]*types.NodeStatus
+	nodes       map[int]*types.NodeConfig
+	connections map[int]*types.WireguardConnection
+	tasks       map[string]*types.Task
+	status      map[int]*types.NodeStatus
 }
 
 // NewMemoryStore 创建内存存储实例
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		nodes:  make(map[int]*types.NodeConfig),
-		tasks:  make(map[string]*types.Task),
-		status: make(map[int]*types.NodeStatus),
+		nodes:       make(map[int]*types.NodeConfig),
+		connections: make(map[int]*types.WireguardConnection),
+		tasks:       make(map[string]*types.Task),
+		status:      make(map[int]*types.NodeStatus),
 	}
 }
 
@@ -89,6 +91,80 @@ func (s *MemoryStore) ListNodes() ([]*types.NodeConfig, error) {
 	}
 
 	return nodes, nil
+}
+
+// GetOrCreateWireguardConnection 获取或创建Wireguard连接
+func (s *MemoryStore) GetOrCreateWireguardConnection(connection *types.WireguardConnection, basePort int) (*types.WireguardConnection, error) {
+	if connection == nil {
+		return nil, fmt.Errorf("connection cannot be nil")
+	}
+
+	var conn types.WireguardConnection
+
+	// 情况1：如果提供了Port，则根据Port查询连接
+	if connection.Port != 0 {
+		s.RLock()
+		for _, c := range s.connections {
+			if c.NodeID == connection.NodeID && c.Port == connection.Port {
+				conn = *c
+				break
+			}
+		}
+		s.RUnlock()
+	}
+
+	// 情况2：如果提供了NodeID和PeerID，则根据它们查询连接
+	if conn.NodeID == 0 && conn.PeerID == 0 {
+		s.RLock()
+		nodeID, peerID := connection.NodeID, connection.PeerID
+		if nodeID > peerID {
+			// ChatGPT 真天才
+			nodeID, peerID = peerID, nodeID
+		}
+
+		for _, c := range s.connections {
+			if c.NodeID == nodeID && c.PeerID == peerID {
+				conn = *c
+				break
+			}
+		}
+		s.RUnlock()
+
+		if conn.NodeID != 0 && conn.PeerID != 0 {
+			return &conn, nil
+		}
+
+		// 未找到连接，创建新连接
+		// 获取当前最大的端口号
+		maxPort := basePort
+		s.RLock()
+		for _, c := range s.connections {
+			if c.Port > maxPort {
+				maxPort = c.Port
+			}
+		}
+		s.RUnlock()
+
+		newPort := basePort
+		if maxPort > basePort {
+			newPort = maxPort + 1
+		}
+
+		conn = types.WireguardConnection{
+			NodeID: connection.NodeID,
+			PeerID: connection.PeerID,
+			Port:   newPort,
+		}
+
+		s.Lock()
+		s.connections[len(s.connections)] = &conn
+		s.Unlock()
+
+		return &conn, nil
+	}
+
+	// 输入参数无效，返回错误
+	return nil, fmt.Errorf("invalid connection parameters; must provide either port, or node_id and peer_id")
 }
 
 // UpdateNodeStatus 更新节点状态

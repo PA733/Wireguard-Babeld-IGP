@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -279,7 +280,9 @@ type TaskFilter struct {
 // matchesFilter 检查任务是否匹配过滤条件
 func matchesFilter(task *types.Task, filter TaskFilter) bool {
 	if filter.NodeID != nil {
-		nodeIDStr, ok := task.Params["node_id"]
+		var taskParams map[string]string
+		json.Unmarshal([]byte(task.Params), &taskParams)
+		nodeIDStr, ok := taskParams["node_id"]
 		if !ok {
 			return false
 		}

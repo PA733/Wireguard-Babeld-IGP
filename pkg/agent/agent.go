@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -261,7 +262,12 @@ func (a *Agent) handleConfigUpdate(task *pb.Task) error {
 	}
 
 	// 更新 WireGuard 配置
-	if err := a.updateWireGuardConfig(config.WireGuard); err != nil {
+	var configs map[string]string
+	err = json.Unmarshal([]byte(config.WireGuard), &configs)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := a.updateWireGuardConfig(configs); err != nil {
 		return fmt.Errorf("updating wireguard config: %w", err)
 	}
 

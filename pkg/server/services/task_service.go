@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -138,10 +139,14 @@ func (s *TaskService) UpdateTaskStatus(ctx context.Context, req *pb.UpdateTaskSt
 	task.Status = types.TaskStatus(req.Status)
 	if req.Error != "" {
 		// 将错误信息添加到任务参数中
-		if task.Params == nil {
-			task.Params = make(map[string]string)
+		var taskParams interface{}
+		json.Unmarshal([]byte(task.Params), &taskParams)
+		if task.Params == taskParams {
+			taskParamsBytes, _ := json.Marshal(make(map[string]string))
+			task.Params = string(taskParamsBytes)
 		}
-		task.Params["error"] = req.Error
+		taskParamsBytes, _ := json.Marshal(map[string]string{"error": req.Error})
+		task.Params = string(taskParamsBytes)
 	}
 	now := time.Now()
 	task.CompletedAt = &now
@@ -180,11 +185,12 @@ func (s *TaskService) CreateTask(taskType types.TaskType, params map[string]inte
 		strParams[k] = fmt.Sprintf("%v", v)
 	}
 
+	strParamsBytes, _ := json.Marshal(strParams)
 	task := &types.Task{
 		ID:        generateTaskID(),
 		Type:      taskType,
 		Status:    types.TaskStatusPending,
-		Params:    strParams,
+		Params:    string(strParamsBytes),
 		CreatedAt: time.Now(),
 	}
 
@@ -204,10 +210,12 @@ func (s *TaskService) BroadcastTask(task *types.Task) error {
 	defer s.nodeMu.RUnlock()
 
 	// 创建gRPC任务消息
+	var taskParams map[string]string
+	json.Unmarshal([]byte(task.Params), &taskParams)
 	pbTask := &pb.Task{
 		Id:     task.ID,
 		Type:   string(task.Type),
-		Params: task.Params,
+		Params: taskParams,
 	}
 
 	// 广播到所有节点
@@ -241,7 +249,9 @@ func (s *TaskService) SaveTask(task *types.Task) error {
 	}
 
 	// 获取目标节点ID
-	nodeIDStr, ok := task.Params["node_id"]
+	var taskParams map[string]string
+	json.Unmarshal([]byte(task.Params), &taskParams)
+	nodeIDStr, ok := taskParams["node_id"]
 	if !ok {
 		return fmt.Errorf("node_id not found in task params")
 	}
@@ -274,7 +284,7 @@ func (s *TaskService) SaveTask(task *types.Task) error {
 		Params: make(map[string]string),
 	}
 	for k, v := range task.Params {
-		pbTask.Params[k] = fmt.Sprintf("%v", v)
+		pbTask.Params[strconv.Itoa(k)] = fmt.Sprintf("%v", v)
 	}
 
 	// 发送任务

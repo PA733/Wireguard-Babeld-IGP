@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,10 +44,11 @@ func (h *UpdateHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 	// 获取最新配置
 	config, err := h.fetchConfig()
 	if err != nil {
+		detailBytes, _ := json.Marshal(map[string]interface{}{"error": err.Error()})
 		return &types.TaskResult{
 			Status:    types.TaskStatusFailed,
 			Error:     fmt.Sprintf("fetching config: %v", err),
-			Details:   map[string]interface{}{"error": err.Error()},
+			Details:   string(detailBytes),
 			Timestamp: time.Now(),
 		}, err
 	}
@@ -54,29 +56,37 @@ func (h *UpdateHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 	// 如果是dry-run模式，只记录不实际更新
 	if h.config.Runtime.DryRun {
 		logger.Info().Msg("Dry run mode, skipping actual update")
+		detailBytes, _ := json.Marshal(map[string]interface{}{"config": config})
 		return &types.TaskResult{
 			Status:    types.TaskStatusSuccess,
-			Details:   map[string]interface{}{"message": "Dry run mode, configuration validated"},
+			Details:   string(detailBytes),
 			Timestamp: time.Now(),
 		}, nil
 	}
 
 	// 更新WireGuard配置
-	if err := h.updateWireGuardConfig(config.WireGuard); err != nil {
+	var configs map[string]string
+	err = json.Unmarshal([]byte(config.WireGuard), &configs)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := h.updateWireGuardConfig(configs); err != nil {
+		detailBytes, _ := json.Marshal(map[string]interface{}{"error": err.Error()})
 		return &types.TaskResult{
 			Status:    types.TaskStatusFailed,
 			Error:     fmt.Sprintf("updating wireguard config: %v", err),
-			Details:   map[string]interface{}{"error": err.Error()},
+			Details:   string(detailBytes),
 			Timestamp: time.Now(),
 		}, err
 	}
 
 	// 更新Babeld配置
 	if err := h.updateBabeldConfig(config.Babel); err != nil {
+		detailBytes, _ := json.Marshal(map[string]interface{}{"error": err.Error()})
 		return &types.TaskResult{
 			Status:    types.TaskStatusFailed,
 			Error:     fmt.Sprintf("updating babeld config: %v", err),
-			Details:   map[string]interface{}{"error": err.Error()},
+			Details:   string(detailBytes),
 			Timestamp: time.Now(),
 		}, err
 	}
@@ -91,9 +101,10 @@ func (h *UpdateHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 	// 	}, err
 	// }
 
+	detailBytes, _ := json.Marshal(map[string]interface{}{"message": "Configuration updated successfully"})
 	return &types.TaskResult{
 		Status:    types.TaskStatusSuccess,
-		Details:   map[string]interface{}{"message": "Configuration updated successfully"},
+		Details:   string(detailBytes),
 		Timestamp: time.Now(),
 	}, nil
 }

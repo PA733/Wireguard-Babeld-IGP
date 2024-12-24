@@ -33,7 +33,7 @@ func (h *StatusHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 	logger := h.logger.With().Str("task_id", task.ID).Logger()
 	logger.Info().Msg("Starting status report")
 
-	details := make(map[string]interface{})
+	// details := make(map[string]interface{})
 
 	// 检查WireGuard状态
 	// if wgStatus, err := h.checkWireGuardStatus(); err != nil {
@@ -59,7 +59,7 @@ func (h *StatusHandler) Handle(task *types.Task) (*types.TaskResult, error) {
 
 	return &types.TaskResult{
 		Status:    types.TaskStatusSuccess,
-		Details:   details,
+		Details:   "",
 		Error:     "",
 		Timestamp: time.Now(),
 	}, nil

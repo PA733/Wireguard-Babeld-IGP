@@ -175,13 +175,15 @@ func (s *NodeService) HandleListNodes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		peersBytes, _ := json.Marshal([]string{})
+		endpointBytes, _ := json.Marshal([]string{req.Endpoint})
 		config := &types.NodeConfig{
 			// 基本信息
 			ID:        nodeID,
 			Name:      req.Name,
 			Token:     token,
-			Peers:     []string{}, // To-Do 添加预设节点
-			Endpoints: []string{req.Endpoint},
+			Peers:     string(peersBytes), // To-Do 添加预设节点
+			Endpoints: string(endpointBytes),
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
@@ -358,15 +360,17 @@ func (s *StatusService) GetMetrics() map[string]interface{} {
 
 // TriggerConfigUpdate 触发节点配置更新任务
 func (s *NodeService) TriggerConfigUpdate(nodeID int) error {
+	paramsBytes, _ := json.Marshal(map[string]interface{}{
+		"node_id": nodeID,
+		"type":    "config_update",
+	})
 	task := &types.Task{
 		ID:        fmt.Sprintf("config_update_%d_%d", nodeID, time.Now().Unix()),
 		Type:      "config_update",
 		Status:    "pending",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Params: map[string]string{
-			"node_id": strconv.Itoa(nodeID),
-		},
+		Params:    string(paramsBytes),
 	}
 
 	// 保存任务

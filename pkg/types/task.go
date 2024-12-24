@@ -23,22 +23,24 @@ const (
 
 // Task 定义任务结构
 type Task struct {
-	ID          string            `json:"id"`           // 任务ID
-	Type        TaskType          `json:"type"`         // 任务类型
-	Status      TaskStatus        `json:"status"`       // 任务状态
-	Params      map[string]string `json:"params"`       // 任务参数
-	CreatedAt   time.Time         `json:"created_at"`   // 创建时间
-	UpdatedAt   time.Time         `json:"updated_at"`   // 更新时间
-	StartedAt   *time.Time        `json:"started_at"`   // 开始时间
-	CompletedAt *time.Time        `json:"completed_at"` // 完成时间
+	ID          string     `gorm:"primarykey;size:36" json:"id"` // 任务ID
+	Type        TaskType   `gorm:"size:50" json:"type"`          // 任务类型
+	Status      TaskStatus `gorm:"size:50" json:"status"`        // 任务状态
+	Params      string     `gorm:"type:text" json:"params"`      // 任务参数(JSON)
+	CreatedAt   time.Time  `json:"created_at"`                   // 创建时间
+	UpdatedAt   time.Time  `json:"updated_at"`                   // 更新时间
+	StartedAt   *time.Time `json:"started_at"`                   // 开始时间
+	CompletedAt *time.Time `json:"completed_at"`                 // 完成时间
 }
 
 // TaskResult 定义任务执行结果
 type TaskResult struct {
-	Status    TaskStatus             `json:"status"`    // 执行状态
-	Details   map[string]interface{} `json:"details"`   // 详细信息
-	Error     string                 `json:"error"`     // 错误信息
-	Timestamp time.Time              `json:"timestamp"` // 时间戳
+	ID        int        `gorm:"primarykey" json:"-"`
+	TaskID    string     `gorm:"size:36;index" json:"task_id"`
+	Status    TaskStatus `gorm:"size:50" json:"status"`    // 执行状态
+	Details   string     `gorm:"type:text" json:"details"` // 详细信息(JSON)
+	Error     string     `gorm:"type:text" json:"error"`   // 错误信息
+	Timestamp time.Time  `json:"timestamp"`                // 时间戳
 }
 
 // TaskHandler 定义任务处理器接口

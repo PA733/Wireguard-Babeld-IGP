@@ -84,6 +84,7 @@ func (s *ConfigService) GenerateNodeConfig(nodeID int) (*types.NodeConfig, error
 	}
 
 	// 创建完整的节点配置
+	wgConfigBytes, _ := json.Marshal(wgConfig)
 	config := &types.NodeConfig{
 		ID:        node.ID,
 		Name:      node.Name,
@@ -93,11 +94,16 @@ func (s *ConfigService) GenerateNodeConfig(nodeID int) (*types.NodeConfig, error
 		Peers:     node.Peers,
 		Endpoints: node.Endpoints,
 		PublicKey: node.PublicKey,
-		WireGuard: wgConfig,
+		WireGuard: string(wgConfigBytes),
 		Babel:     babelConfig,
-		Network:   node.Network,
-		CreatedAt: node.CreatedAt,
-		UpdatedAt: time.Now(),
+		// Network:   node.Network,
+		MTU:           node.MTU,
+		BasePort:      node.BasePort,
+		LinkLocalNet:  node.LinkLocalNet,
+		BabelPort:     node.BabelPort,
+		BabelInterval: node.BabelInterval,
+		CreatedAt:     node.CreatedAt,
+		UpdatedAt:     time.Now(),
 	}
 
 	return config, nil
@@ -263,7 +269,7 @@ func (s *ConfigService) generateBabeldConfig(node *types.NodeConfig, peers []*ty
 	}{
 		NodeID:         node.ID,
 		Port:           s.config.Network.BabelPort,
-		UpdateInterval: node.Network.BabelInterval,
+		UpdateInterval: node.BabelInterval,
 	}
 
 	// 添加接口配置

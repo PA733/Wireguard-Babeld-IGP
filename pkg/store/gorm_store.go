@@ -43,11 +43,24 @@ func (s *GormStore) initialize() error {
 	return nil
 }
 
-// SaveTask 保存任务
-func (s *GormStore) SaveTask(task *types.Task) error {
+// CreateTask 保存任务
+func (s *GormStore) CreateTask(task *types.Task) error {
+	task.CreatedAt = time.Now()
+	task.UpdatedAt = time.Now()
 	result := s.db.Create(&task)
 	if result.Error != nil {
 		return fmt.Errorf("inserting task: %w", result.Error)
+	}
+
+	return nil
+}
+
+func (s *GormStore) UpdateTask(task *types.Task) error {
+	task.UpdatedAt = time.Now()
+
+	result := s.db.Save(task)
+	if result.Error != nil {
+		return fmt.Errorf("updating task: %w", result.Error)
 	}
 
 	return nil

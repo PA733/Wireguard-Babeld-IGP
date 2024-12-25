@@ -22,7 +22,8 @@ type Store interface {
 	ListNodeStatus() ([]*types.NodeStatus, error)
 
 	// 任务相关
-	SaveTask(task *types.Task) error
+	CreateTask(task *types.Task) error
+	UpdateTask(task *types.Task) error
 	GetTask(id string) (*types.Task, error)
 	ListTasks(filter TaskFilter) ([]*types.Task, error)
 	DeleteTask(id string) error

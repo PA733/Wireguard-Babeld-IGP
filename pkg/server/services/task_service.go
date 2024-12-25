@@ -2,9 +2,7 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -144,6 +142,14 @@ func (s *TaskService) UpdateTaskStatus(ctx context.Context, req *pb.UpdateTaskSt
 	now := time.Now()
 	task.CompletedAt = &now
 
+	err := s.store.UpdateTask(task)
+	if err != nil {
+		return &pb.UpdateTaskStatusResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to update task: %s", err),
+		}, status.Error(codes.Internal, "failed to update task")
+	}
+
 	return &pb.UpdateTaskStatusResponse{
 		Success: true,
 		Message: "Task status updated",
@@ -185,6 +191,11 @@ func (s *TaskService) CreateTask(taskType types.TaskType, nodeID int) (*types.Ta
 
 	// 发送任务到通道
 	s.taskChan <- task
+
+	// 保存任务到存储
+	if err := s.store.CreateTask(task); err != nil {
+		return nil, fmt.Errorf("saving task: %w", err)
+	}
 
 	return task, nil
 }

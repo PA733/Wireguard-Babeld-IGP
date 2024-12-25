@@ -1,9 +1,7 @@
 package store
 
 import (
-	"encoding/json"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -203,10 +201,23 @@ func (s *MemoryStore) ListNodeStatus() ([]*types.NodeStatus, error) {
 	return statuses, nil
 }
 
-// SaveTask 保存任务
-func (s *MemoryStore) SaveTask(task *types.Task) error {
+// CreateTask 保存任务
+func (s *MemoryStore) CreateTask(task *types.Task) error {
 	s.Lock()
 	defer s.Unlock()
+
+	s.tasks[task.ID] = task
+	return nil
+}
+
+// UpdateTask 更新任务
+func (s *MemoryStore) UpdateTask(task *types.Task) error {
+	s.Lock()
+	defer s.Unlock()
+
+	if _, ok := s.tasks[task.ID]; !ok {
+		return fmt.Errorf("task not found: %s", task.ID)
+	}
 
 	s.tasks[task.ID] = task
 	return nil

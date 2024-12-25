@@ -280,14 +280,7 @@ type TaskFilter struct {
 // matchesFilter 检查任务是否匹配过滤条件
 func matchesFilter(task *types.Task, filter TaskFilter) bool {
 	if filter.NodeID != nil {
-		var taskParams map[string]string
-		json.Unmarshal([]byte(task.Params), &taskParams)
-		nodeIDStr, ok := taskParams["node_id"]
-		if !ok {
-			return false
-		}
-		nodeID, err := strconv.Atoi(nodeIDStr)
-		if err != nil || nodeID != *filter.NodeID {
+		if task.NodeID != *filter.NodeID {
 			return false
 		}
 	}

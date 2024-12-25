@@ -23,14 +23,16 @@ const (
 
 // Task 定义任务结构
 type Task struct {
-	ID          string     `gorm:"primarykey;size:36" json:"id"` // 任务ID
-	Type        TaskType   `gorm:"size:50" json:"type"`          // 任务类型
-	Status      TaskStatus `gorm:"size:50" json:"status"`        // 任务状态
-	Params      string     `gorm:"type:text" json:"params"`      // 任务参数(JSON)
-	CreatedAt   time.Time  `json:"created_at"`                   // 创建时间
-	UpdatedAt   time.Time  `json:"updated_at"`                   // 更新时间
-	StartedAt   *time.Time `json:"started_at"`                   // 开始时间
-	CompletedAt *time.Time `json:"completed_at"`                 // 完成时间
+	ID          string     `gorm:"primarykey;size:36" json:"id"`                // 任务ID
+	NodeID      int        `json:"node_id"`                                     // 节点ID
+	Type        TaskType   `gorm:"size:50" json:"type"`                         // 任务类型
+	Status      TaskStatus `gorm:"size:50" json:"status"`                       // 任务状态
+	Message     string     `gorm:"type:text" json:"message"`                    // 任务消息
+	CreatedAt   time.Time  `json:"created_at"`                                  // 创建时间
+	UpdatedAt   time.Time  `json:"updated_at"`                                  // 更新时间
+	StartedAt   *time.Time `json:"started_at"`                                  // 开始时间
+	CompletedAt *time.Time `json:"completed_at"`                                // 完成时间
+	Node        NodeConfig `gorm:"foreignKey:NodeID;references:ID" json:"node"` // 节点
 }
 
 // TaskResult 定义任务执行结果

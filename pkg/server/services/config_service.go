@@ -118,10 +118,7 @@ func (s *ConfigService) UpdateConfig(nodeID int, config *types.NodeConfig) error
 	}
 
 	// 创建配置更新任务
-	_, err := s.taskService.CreateTask(types.TaskTypeUpdate, map[string]interface{}{
-		"node_id": nodeID,
-		"type":    "config_update",
-	})
+	_, err := s.taskService.CreateTask(types.TaskTypeUpdate, nodeID)
 	if err != nil {
 		return fmt.Errorf("creating update task: %w", err)
 	}

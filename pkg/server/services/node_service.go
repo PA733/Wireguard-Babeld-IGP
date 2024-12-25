@@ -10,7 +10,6 @@ import (
 	"mesh-backend/pkg/types"
 	"net/http"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,7 +26,6 @@ type NodeService struct {
 	// 节点管理
 	nodeAuth *NodeAuthenticator
 	nodes    map[int]*types.NodeConfig
-	nodesMu  sync.RWMutex
 	lastID   int32
 
 	// 服务依赖
@@ -224,21 +222,22 @@ func (s *NodeService) DeleteNode(nodeID int) error {
 
 // TriggerConfigUpdate 触发节点配置更新任务
 func (s *NodeService) TriggerConfigUpdate(nodeID int) error {
-	paramsBytes, _ := json.Marshal(map[string]interface{}{
-		"node_id": nodeID,
-		"type":    "config_update",
-	})
-	task := &types.Task{
-		ID:        fmt.Sprintf("config_update_%d_%d", nodeID, time.Now().Unix()),
-		Type:      "config_update",
-		Status:    "pending",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Params:    string(paramsBytes),
-	}
+	// task := &types.Task{
+	// 	ID:        fmt.Sprintf("config_update_%d_%d", nodeID, time.Now().Unix()),
+	// 	Type:      "config_update",
+	// 	Status:    "pending",
+	// 	CreatedAt: time.Now(),
+	// 	UpdatedAt: time.Now(),
+	// 	NodeID:    nodeID,
+	// }
 
 	// 保存任务
-	if err := s.taskService.SaveTask(task); err != nil {
+	task, err := s.taskService.CreateTask(types.TaskTypeUpdate, nodeID)
+	if err != nil {
+		return fmt.Errorf("creating update task: %w", err)
+	}
+
+	if err := s.taskService.PushTask(task); err != nil {
 		return fmt.Errorf("saving task: %w", err)
 	}
 

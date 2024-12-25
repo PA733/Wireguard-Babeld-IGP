@@ -249,20 +249,18 @@ func (s *TaskService) SaveTask(task *types.Task) error {
 	}
 
 	// 获取目标节点ID
-	var taskParams map[string]string
+	var taskParams map[string]interface{}
 	json.Unmarshal([]byte(task.Params), &taskParams)
-	nodeIDStr, ok := taskParams["node_id"]
+	// nodeID, ok := taskParams["node_id"]
+	// 从 taskParams 中取出 node_id 并转换为 int
+	nodeID, ok := taskParams["node_id"].(int32)
 	if !ok {
 		return fmt.Errorf("node_id not found in task params")
-	}
-	nodeID, err := strconv.ParseInt(nodeIDStr, 10, 32)
-	if err != nil {
-		return fmt.Errorf("invalid node_id: %w", err)
 	}
 
 	// 查找节点状态
 	s.nodeMu.RLock()
-	node, exists := s.nodes[int32(nodeID)]
+	node, exists := s.nodes[nodeID]
 	s.nodeMu.RUnlock()
 
 	if !exists {

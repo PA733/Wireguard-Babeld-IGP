@@ -18,6 +18,8 @@ import (
 	"mesh-backend/pkg/config"
 	"mesh-backend/pkg/server/services"
 	"mesh-backend/pkg/store"
+
+	"github.com/gin-gonic/gin"
 )
 
 // Server 服务器结构
@@ -36,7 +38,7 @@ type Server struct {
 	listener   net.Listener
 	mux        cmux.CMux
 	grpcServer *grpc.Server
-	httpServer *http.Server
+	httpServer *gin.Engine
 	wg         sync.WaitGroup
 }
 
@@ -107,20 +109,15 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 	taskService.RegisterGRPC(grpcServer)
 	reflection.Register(grpcServer)
 
-	// 创建HTTP处理器
-	httpMux := http.NewServeMux()
+	// 创建 Gin 引擎
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	router.Use(gin.Recovery())
 
-	// 注册HTTP路由
-	httpMux.HandleFunc("/nodes", nodeService.HandleListNodes)
-	httpMux.HandleFunc("/nodes/", nodeService.HandleGetNode)
-	httpMux.HandleFunc("/nodes/config/", nodeService.HandleTriggerConfigUpdate)
-	httpMux.HandleFunc("/config/", configService.HandleGetConfig)
-	httpMux.HandleFunc("/status", statusService.HandleGetStatus)
-
-	// 创建HTTP服务器
-	httpServer := &http.Server{
-		Handler: httpMux,
-	}
+	// 注册路由
+	nodeService.RegisterRoutes(router)
+	configService.RegisterRoutes(router)
+	statusService.RegisterRoutes(router)
 
 	return &Server{
 		config:        cfg,
@@ -133,7 +130,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		listener:      listener,
 		mux:           mux,
 		grpcServer:    grpcServer,
-		httpServer:    httpServer,
+		httpServer:    router,
 	}, nil
 }
 
@@ -156,11 +153,15 @@ func (s *Server) Start() error {
 		}
 	}()
 
-	// 启动 HTTP 服务器
+	// 修改 HTTP 服务器启动方式
+	httpServer := &http.Server{
+		Handler: s.httpServer,
+	}
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := s.httpServer.Serve(httpL); err != nil && err != http.ErrServerClosed {
+		if err := httpServer.Serve(httpL); err != nil && err != http.ErrServerClosed {
 			s.logger.Error().Err(err).Msg("HTTP server error")
 		}
 	}()
@@ -185,12 +186,12 @@ func (s *Server) Start() error {
 // Stop 停止服务器
 func (s *Server) Stop() error {
 	// 优雅关闭 HTTP 服务器
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := s.httpServer.Shutdown(ctx); err != nil {
-		s.logger.Error().Err(err).Msg("Error shutting down HTTP server")
-	}
+	// if err := s.httpServer.Shutdown(ctx); err != nil {
+	// 	s.logger.Error().Err(err).Msg("Error shutting down HTTP server")
+	// }
 
 	// 优雅关闭 gRPC 服务器
 	s.grpcServer.GracefulStop()

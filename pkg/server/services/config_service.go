@@ -13,6 +13,7 @@ import (
 	"mesh-backend/pkg/config"
 	"mesh-backend/pkg/types"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
 
@@ -129,58 +130,45 @@ func (s *ConfigService) UpdateConfig(nodeID int, config *types.NodeConfig) error
 }
 
 // HandleGetConfig HTTP处理器：获取节点配置
-func (s *ConfigService) HandleGetConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// 从URL路径中提取节点ID
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 3 {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
-		return
-	}
-
-	nodeID, err := strconv.Atoi(parts[2])
+func (s *ConfigService) HandleGetConfig(c *gin.Context) {
+	nodeID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		http.Error(w, "Invalid node ID", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node ID"})
 		return
 	}
 
 	config, err := s.GenerateNodeConfig(nodeID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(config)
+	c.JSON(http.StatusOK, config)
 }
 
 // HandleUpdateConfig HTTP处理器：更新节点配置
-func (s *ConfigService) HandleUpdateConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+func (s *ConfigService) HandleUpdateConfig(c *gin.Context) {
 	var req struct {
-		NodeID int               `json:"node_id"`
-		Config *types.NodeConfig `json:"config"`
+		Config *types.NodeConfig `json:"config" binding:"required"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
-	if err := s.UpdateConfig(req.NodeID, req.Config); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	nodeID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node ID"})
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	if err := s.UpdateConfig(nodeID, req.Config); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusOK)
 }
 
 // generateWireGuardConfig 生成 WireGuard 配置
@@ -303,4 +291,23 @@ func (s *ConfigService) generateBabeldConfig(node *types.NodeConfig, peers []*ty
 	}
 
 	return buf.String(), nil
+}
+
+func (s *ConfigService) RegisterRoutes(r *gin.Engine) {
+	r.GET("/config/:id", s.HandleGetConfig)
+	r.POST("/config/:id", s.HandleUpdateConfig)
+}
+
+func (s *NodeService) GenerateWireguardConnection(nodeID int, peerID int, basePort int) (*types.WireguardConnection, error) {
+	connection := &types.WireguardConnection{
+		NodeID: nodeID,
+		PeerID: peerID,
+	}
+
+	connection, err := s.store.GetOrCreateWireguardConnection(connection, basePort)
+	if err != nil {
+		return nil, fmt.Errorf("get or create wireguard connection: %w", err)
+	}
+
+	return connection, nil
 }

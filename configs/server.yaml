@@ -91,7 +91,7 @@ log:
 
 # 存储配置
 storage:
-  type: "sqlite"
+  type: "postgres"
   sqlite:
     path: "data/mesh.db"
   postgres:

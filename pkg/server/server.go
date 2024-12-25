@@ -48,6 +48,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		SQLite: store.SQLiteConfig{
 			Path: cfg.Storage.SQLite.Path,
 		},
+		Postgres: cfg.Storage.Postgres,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating store: %w", err)

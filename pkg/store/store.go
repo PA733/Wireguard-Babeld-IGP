@@ -34,13 +34,24 @@ type Store interface {
 
 // Config 存储配置
 type Config struct {
-	Type   string       `yaml:"type"`   // 存储类型
-	SQLite SQLiteConfig `yaml:"sqlite"` // SQLite配置
+	Type     string         `yaml:"type"`     // 存储类型
+	SQLite   SQLiteConfig   `yaml:"sqlite"`   // SQLite配置
+	Postgres PostgresConfig `yaml:"postgres"` // Postgre配置
 }
 
 // SQLiteConfig SQLite配置
 type SQLiteConfig struct {
 	Path string `yaml:"path"` // 数据库文件路径
+}
+
+// PostgresConfig Postgre配置
+type PostgresConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"dbname"`
+	SSLMode  string `yaml:"sslmode"`
 }
 
 // NewStore 创建存储实例
@@ -50,6 +61,8 @@ func NewStore(cfg *Config) (Store, error) {
 		return NewMemoryStore(), nil
 	case "sqlite":
 		return NewSQLiteStore(cfg.SQLite.Path)
+	case "postgres":
+		return NewPostgreStore(cfg.Postgres)
 	default:
 		return nil, fmt.Errorf("unsupported store type: %s", cfg.Type)
 	}

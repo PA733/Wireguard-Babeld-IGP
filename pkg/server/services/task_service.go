@@ -237,8 +237,8 @@ func (s *TaskService) BroadcastTask(task *types.Task) error {
 }
 
 // generateTaskID 生成任务ID
-func generateTaskID() string {
-	return fmt.Sprintf("task-%d", time.Now().UnixNano())
+func generateTaskID(taskType types.TaskType) string {
+	return fmt.Sprintf("%s_%d", string(taskType), time.Now().UnixNano())
 }
 
 // SaveTask 保存并推送任务

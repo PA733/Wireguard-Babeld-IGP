@@ -230,7 +230,7 @@ func (a *Agent) processTask(task *pb.Task) {
 
 	var err error
 	switch task.Type {
-	case "config_update":
+	case string(types.TaskTypeUpdate):
 		err = a.handleConfigUpdate(task)
 	default:
 		err = fmt.Errorf("unknown task type: %s", task.Type)

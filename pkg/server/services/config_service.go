@@ -222,7 +222,7 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 			AllowedIPs: fmt.Sprintf("%s,%s",
 				strings.Replace(s.config.Network.IPv4NodeTemplate, "{node}", fmt.Sprintf("%d", peer.ID), -1),
 				strings.Replace(s.config.Network.IPv6NodeTemplate, "{node:x}", fmt.Sprintf("%x", peer.ID), -1)),
-			Endpoint: fmt.Sprintf("%s:%d", peer.Endpoints[0], wgConn.Port),
+			Endpoint: fmt.Sprintf("%s:%d", string(peer.Endpoints[0]), wgConn.Port),
 			ID:       peer.ID,
 		}
 		data.Peer = peerData

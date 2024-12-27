@@ -291,7 +291,7 @@ func (s *ConfigService) generateBabeldConfig(node *types.NodeConfig, peers []*ty
 	return buf.String(), nil
 }
 
-func (s *ConfigService) RegisterRoutes(r *gin.Engine) {
+func (s *ConfigService) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/config/:id", s.HandleGetConfig)
 	r.POST("/config/:id", s.HandleUpdateConfig)
 }

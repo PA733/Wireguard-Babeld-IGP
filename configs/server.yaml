@@ -6,6 +6,8 @@ server:
     enabled: false
     cert: "certs/server.crt"
     key: "certs/server.key"
+  jwt:
+    secret_key: "your-super-secret-key-please-change-in-production"
 
 # 网络配置
 network:

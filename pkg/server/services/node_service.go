@@ -63,7 +63,7 @@ func NewNodeService(cfg *config.ServerConfig, logger zerolog.Logger, store store
 	return srv
 }
 
-func (s *NodeService) RegisterRoutes(r *gin.Engine) {
+func (s *NodeService) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/nodes", s.HandleListNodes)
 	r.POST("/nodes", s.HandleCreateNode)
 	r.GET("/nodes/:id", s.HandleGetNode)

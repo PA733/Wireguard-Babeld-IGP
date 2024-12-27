@@ -36,9 +36,75 @@ func NewGormStore(dialector gorm.Dialector) (*GormStore, error) {
 
 // initialize 初始化数据库
 func (s *GormStore) initialize() error {
-	err := s.db.AutoMigrate(&types.NodeConfig{}, &types.NodeStatus{}, &types.Task{}, &types.WireguardConnection{})
+	err := s.db.AutoMigrate(&types.NodeConfig{}, &types.NodeStatus{}, &types.Task{}, &types.WireguardConnection{}, &types.User{})
 	if err != nil {
 		return fmt.Errorf("auto migrating tables: %w", err)
+	}
+	return nil
+}
+
+// CreateUser 创建用户
+func (s *GormStore) CreateUser(user *types.User) error {
+	user.CreatedAt = time.Now()
+	user.UpdatedAt = time.Now()
+	result := s.db.Create(user)
+	if result.Error != nil {
+		return fmt.Errorf("creating user: %w", result.Error)
+	}
+	return nil
+}
+
+// GetUser 获取用户
+func (s *GormStore) GetUser(id int) (*types.User, error) {
+	var user types.User
+	result := s.db.First(&user, id)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("getting user: %w", result.Error)
+	}
+	return &user, nil
+}
+
+// GetUserByUsername 通过用户名获取用户
+func (s *GormStore) GetUserByUsername(username string) (*types.User, error) {
+	var user types.User
+	result := s.db.Where("username = ?", username).First(&user)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("getting user by username: %w", result.Error)
+	}
+	return &user, nil
+}
+
+// CheckUserExists 检查用户名是否存在
+func (s *GormStore) CheckUserExists(username string) (bool, error) {
+	var count int64
+	result := s.db.Model(&types.User{}).Where("username = ?", username).Count(&count)
+	if result.Error != nil {
+		return false, fmt.Errorf("checking user existence: %w", result.Error)
+	}
+	return count > 0, nil
+}
+
+// UpdateUser 更新用户
+func (s *GormStore) UpdateUser(user *types.User) error {
+	user.UpdatedAt = time.Now()
+	result := s.db.Save(user)
+	if result.Error != nil {
+		return fmt.Errorf("updating user: %w", result.Error)
+	}
+	return nil
+}
+
+// DeleteUser 删除用户
+func (s *GormStore) DeleteUser(id int) error {
+	result := s.db.Delete(&types.User{}, id)
+	if result.Error != nil {
+		return fmt.Errorf("deleting user: %w", result.Error)
 	}
 	return nil
 }

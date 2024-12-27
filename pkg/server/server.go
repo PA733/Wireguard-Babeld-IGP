@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"mesh-backend/pkg/config"
+	"mesh-backend/pkg/server/middleware"
 	"mesh-backend/pkg/server/services"
 	"mesh-backend/pkg/store"
 
@@ -33,6 +34,7 @@ type Server struct {
 	configService *services.ConfigService
 	taskService   *services.TaskService
 	statusService *services.StatusService
+	userService   *services.UserService
 
 	// 服务器实例
 	listener   net.Listener
@@ -44,6 +46,9 @@ type Server struct {
 
 // New 创建服务器实例
 func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
+	// 初始化 JWT 密钥
+	middleware.InitJWTSecret(cfg)
+
 	// 创建存储实例
 	store, err := store.NewStore(&store.Config{
 		Type: cfg.Storage.Type,
@@ -67,6 +72,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("creating config service: %w", err)
 	}
 	statusService := services.NewStatusService(cfg, logger, store)
+	userService := services.NewUserService(cfg, logger, store)
 
 	// 创建基础TCP监听器
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -115,9 +121,16 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 	router.Use(gin.Recovery())
 
 	// 注册路由
-	nodeService.RegisterRoutes(router)
-	configService.RegisterRoutes(router)
-	statusService.RegisterRoutes(router)
+	userService.RegisterRoutes(router) // 注册用户认证路由（不需要JWT认证）
+
+	// 创建需要JWT认证的路由组
+	protected := router.Group("/")
+	protected.Use(middleware.JWTAuth())
+	{
+		nodeService.RegisterRoutes(protected)
+		configService.RegisterRoutes(protected)
+		statusService.RegisterRoutes(protected)
+	}
 
 	return &Server{
 		config:        cfg,
@@ -127,6 +140,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		configService: configService,
 		taskService:   taskService,
 		statusService: statusService,
+		userService:   userService,
 		listener:      listener,
 		mux:           mux,
 		grpcServer:    grpcServer,

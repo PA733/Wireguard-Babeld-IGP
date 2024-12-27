@@ -15,6 +15,9 @@ type MemoryStore struct {
 	connections map[int]*types.WireguardConnection
 	tasks       map[string]*types.Task
 	status      map[int]*types.NodeStatus
+	users       map[int]*types.User // 用户ID到用户的映射
+	usernames   map[string]int      // 用户名到用户ID的映射
+	lastUserID  int                 // 最后分配的用户ID
 }
 
 // NewMemoryStore 创建内存存储实例
@@ -24,6 +27,9 @@ func NewMemoryStore() *MemoryStore {
 		connections: make(map[int]*types.WireguardConnection),
 		tasks:       make(map[string]*types.Task),
 		status:      make(map[int]*types.NodeStatus),
+		users:       make(map[int]*types.User),
+		usernames:   make(map[string]int),
+		lastUserID:  0,
 	}
 }
 
@@ -305,4 +311,103 @@ func matchesFilter(task *types.Task, filter TaskFilter) bool {
 	}
 
 	return true
+}
+
+// CreateUser 创建用户
+func (s *MemoryStore) CreateUser(user *types.User) error {
+	s.Lock()
+	defer s.Unlock()
+
+	// 检查用户名是否已存在
+	if _, exists := s.usernames[user.Username]; exists {
+		return fmt.Errorf("username already exists: %s", user.Username)
+	}
+
+	// 分配新的用户ID
+	s.lastUserID++
+	user.ID = s.lastUserID
+	user.CreatedAt = time.Now()
+	user.UpdatedAt = time.Now()
+
+	// 保存用户
+	s.users[user.ID] = user
+	s.usernames[user.Username] = user.ID
+
+	return nil
+}
+
+// GetUser 获取用户
+func (s *MemoryStore) GetUser(id int) (*types.User, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	user, exists := s.users[id]
+	if !exists {
+		return nil, ErrNotFound
+	}
+
+	return user, nil
+}
+
+// GetUserByUsername 通过用户名获取用户
+func (s *MemoryStore) GetUserByUsername(username string) (*types.User, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	userID, exists := s.usernames[username]
+	if !exists {
+		return nil, ErrNotFound
+	}
+
+	return s.users[userID], nil
+}
+
+// CheckUserExists 检查用户名是否存在
+func (s *MemoryStore) CheckUserExists(username string) (bool, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	_, exists := s.usernames[username]
+	return exists, nil
+}
+
+// UpdateUser 更新用户
+func (s *MemoryStore) UpdateUser(user *types.User) error {
+	s.Lock()
+	defer s.Unlock()
+
+	if _, exists := s.users[user.ID]; !exists {
+		return ErrNotFound
+	}
+
+	// 如果用户名发生变化，需要更新 usernames 映射
+	oldUser := s.users[user.ID]
+	if oldUser.Username != user.Username {
+		if _, exists := s.usernames[user.Username]; exists {
+			return fmt.Errorf("username already exists: %s", user.Username)
+		}
+		delete(s.usernames, oldUser.Username)
+		s.usernames[user.Username] = user.ID
+	}
+
+	user.UpdatedAt = time.Now()
+	s.users[user.ID] = user
+
+	return nil
+}
+
+// DeleteUser 删除用户
+func (s *MemoryStore) DeleteUser(id int) error {
+	s.Lock()
+	defer s.Unlock()
+
+	user, exists := s.users[id]
+	if !exists {
+		return ErrNotFound
+	}
+
+	delete(s.usernames, user.Username)
+	delete(s.users, id)
+
+	return nil
 }

@@ -24,7 +24,7 @@ func NewStatusService(cfg *config.ServerConfig, logger zerolog.Logger, store sto
 	}
 }
 
-func (s *StatusService) RegisterRoutes(r *gin.Engine) {
+func (s *StatusService) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/status", s.HandleGetStatus)
 }
 

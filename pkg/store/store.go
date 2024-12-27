@@ -1,9 +1,14 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 
 	"mesh-backend/pkg/types"
+)
+
+var (
+	ErrNotFound = errors.New("not found")
 )
 
 // Store 定义存储接口
@@ -28,6 +33,14 @@ type Store interface {
 	ListTasks(filter TaskFilter) ([]*types.Task, error)
 	DeleteTask(id string) error
 	CleanupTasks() error
+
+	// 用户相关
+	CreateUser(user *types.User) error
+	GetUser(id int) (*types.User, error)
+	GetUserByUsername(username string) (*types.User, error)
+	CheckUserExists(username string) (bool, error)
+	UpdateUser(user *types.User) error
+	DeleteUser(id int) error
 
 	// 关闭存储
 	Close() error

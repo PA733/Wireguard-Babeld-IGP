@@ -17,6 +17,9 @@ type ServerConfig struct {
 			Cert    string `yaml:"cert"`
 			Key     string `yaml:"key"`
 		} `yaml:"tls"`
+		JWT struct {
+			SecretKey string `yaml:"secret_key"`
+		} `yaml:"jwt"`
 	} `yaml:"server"`
 
 	// 网络配置

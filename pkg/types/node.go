@@ -19,8 +19,8 @@ type NodeConfig struct {
 	PrivateKey string `gorm:"size:255" json:"private_key"` // WireGuard私钥
 
 	// 服务配置
-	WireGuard string `gorm:"type:text" json:"wireguard"` // WireGuard配置(JSON)
-	Babel     string `gorm:"type:text" json:"babel"`     // Babeld配置
+	WireGuard string `json:"wireguard"` // WireGuard配置(JSON)
+	Babel     string `json:"babel"`     // Babeld配置
 
 	// 网络参数
 	MTU           int    `json:"mtu"`                           // MTU大小

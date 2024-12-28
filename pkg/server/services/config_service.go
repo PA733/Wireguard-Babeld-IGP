@@ -20,7 +20,6 @@ import (
 // ConfigService 配置服务
 type ConfigService struct {
 	config        *config.ServerConfig
-	nodeAuth      *NodeAuthenticator
 	wgTemplate    *template.Template
 	babelTemplate *template.Template
 	templateMu    sync.RWMutex
@@ -32,11 +31,10 @@ type ConfigService struct {
 }
 
 // NewConfigService 创建配置服务
-func NewConfigService(cfg *config.ServerConfig, nodeService *NodeService, nodeAuth *NodeAuthenticator, logger zerolog.Logger, taskService *TaskService) (*ConfigService, error) {
+func NewConfigService(cfg *config.ServerConfig, nodeService *NodeService, logger zerolog.Logger, taskService *TaskService) (*ConfigService, error) {
 	s := &ConfigService{
 		config:      cfg,
 		nodeService: nodeService,
-		nodeAuth:    nodeAuth,
 		logger:      logger.With().Str("component", "config_service").Logger(),
 		taskService: taskService,
 	}
@@ -142,31 +140,6 @@ func (s *ConfigService) HandleGetConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, config)
-}
-
-// HandleUpdateConfig HTTP处理器：更新节点配置
-func (s *ConfigService) HandleUpdateConfig(c *gin.Context) {
-	var req struct {
-		Config *types.NodeConfig `json:"config" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	nodeID, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node ID"})
-		return
-	}
-
-	if err := s.UpdateConfig(nodeID, req.Config); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.Status(http.StatusOK)
 }
 
 // generateWireGuardConfig 生成 WireGuard 配置
@@ -293,7 +266,6 @@ func (s *ConfigService) generateBabeldConfig(node *types.NodeConfig, peers []*ty
 
 func (s *ConfigService) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/config/:id", s.HandleGetConfig)
-	r.POST("/config/:id", s.HandleUpdateConfig)
 }
 
 func (s *NodeService) GenerateWireguardConnection(nodeID int, peerID int, basePort int) (*types.WireguardConnection, error) {

@@ -6,17 +6,23 @@ import (
 	"strings"
 	"time"
 
-	"mesh-backend/pkg/config"
-
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rs/zerolog"
 )
 
-var jwtSecret []byte
+// JWTAuthenticator 实现 JWT 认证
+type JWTAuthenticator struct {
+	logger    zerolog.Logger
+	jwtSecret []byte
+}
 
-// InitJWTSecret 初始化 JWT 密钥
-func InitJWTSecret(cfg *config.ServerConfig) {
-	jwtSecret = []byte(cfg.Server.JWT.SecretKey)
+// NewJWTAuthenticator 创建 JWT 认证器
+func NewJWTAuthenticator(logger zerolog.Logger, jwtSecret []byte) *JWTAuthenticator {
+	return &JWTAuthenticator{
+		logger:    logger.With().Str("component", "jwt_auth").Logger(),
+		jwtSecret: jwtSecret,
+	}
 }
 
 type Claims struct {
@@ -26,7 +32,7 @@ type Claims struct {
 }
 
 // GenerateToken 生成 JWT token
-func GenerateToken(userID int, username string) (string, error) {
+func (a *JWTAuthenticator) GenerateToken(userID int, username string) (string, error) {
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
@@ -37,11 +43,11 @@ func GenerateToken(userID int, username string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret)
+	return token.SignedString(a.jwtSecret)
 }
 
 // JWTAuth JWT 认证中间件
-func JWTAuth() gin.HandlerFunc {
+func (a *JWTAuthenticator) JWTAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -62,7 +68,7 @@ func JWTAuth() gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, errors.New("invalid signing method")
 			}
-			return jwtSecret, nil
+			return a.jwtSecret, nil
 		})
 
 		if err != nil {

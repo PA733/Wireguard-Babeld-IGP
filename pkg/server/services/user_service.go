@@ -16,27 +16,26 @@ import (
 
 // UserService 用户服务
 type UserService struct {
-	config *config.ServerConfig
-	logger zerolog.Logger
-	store  store.Store
+	config  *config.ServerConfig
+	logger  zerolog.Logger
+	store   store.Store
+	jwtAuth middleware.JWTAuthenticator
 }
 
 // NewUserService 创建用户服务实例
-func NewUserService(cfg *config.ServerConfig, logger zerolog.Logger, store store.Store) *UserService {
+func NewUserService(cfg *config.ServerConfig, logger zerolog.Logger, store store.Store, jwtAuth middleware.JWTAuthenticator) *UserService {
 	return &UserService{
-		config: cfg,
-		logger: logger.With().Str("service", "user").Logger(),
-		store:  store,
+		config:  cfg,
+		logger:  logger.With().Str("service", "user").Logger(),
+		store:   store,
+		jwtAuth: jwtAuth,
 	}
 }
 
 // RegisterRoutes 注册路由
-func (s *UserService) RegisterRoutes(r *gin.Engine) {
-	auth := r.Group("/auth")
-	{
-		auth.POST("/register", s.HandleRegister)
-		auth.POST("/login", s.HandleLogin)
-	}
+func (s *UserService) RegisterRoutes(r *gin.RouterGroup) {
+	r.POST("/register", s.HandleRegister)
+	r.POST("/login", s.HandleLogin)
 }
 
 // HandleRegister 处理用户注册
@@ -131,7 +130,7 @@ func (s *UserService) HandleLogin(c *gin.Context) {
 	}
 
 	// 生成 JWT token
-	token, err := middleware.GenerateToken(user.ID, user.Username)
+	token, err := s.jwtAuth.GenerateToken(user.ID, user.Username)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to generate token")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})

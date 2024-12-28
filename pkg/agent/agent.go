@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -246,9 +247,20 @@ func (a *Agent) processTask(task *pb.Task) {
 // handleConfigUpdate 处理配置更新任务
 func (a *Agent) handleConfigUpdate(task *pb.Task) error {
 	// 获取最新配置
-	resp, err := http.Get(fmt.Sprintf("%s/config/%d", a.config.Server.Address, a.config.NodeID))
+	url := fmt.Sprintf("%s/api/agent/config/%d", a.config.Server.Address, a.config.NodeID)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("fetching config: %w", err)
+	}
+
+	auth := fmt.Sprintf("%d:%s", a.config.NodeID, a.config.Token)
+	encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
+	req.Header.Add("Authorization", "Basic "+encodedAuth)
+	// 发送请求
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("发送请求失败:%s", err)
 	}
 	defer resp.Body.Close()
 

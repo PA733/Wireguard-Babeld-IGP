@@ -8,6 +8,7 @@ import (
 
 	pb "mesh-backend/api/proto/task"
 	"mesh-backend/pkg/config"
+	"mesh-backend/pkg/server/middleware"
 	"mesh-backend/pkg/store"
 	"mesh-backend/pkg/types"
 
@@ -28,7 +29,7 @@ type TaskService struct {
 	// 节点管理
 	nodes    map[int32]*nodeState
 	nodeMu   sync.RWMutex
-	nodeAuth *NodeAuthenticator
+	nodeAuth *middleware.NodeAuthenticator
 
 	// 任务管理
 	tasks    map[string]*types.Task
@@ -45,7 +46,7 @@ type nodeState struct {
 }
 
 // NewTaskService 创建任务服务实例
-func NewTaskService(cfg *config.ServerConfig, logger zerolog.Logger, store store.Store, nodeAuth *NodeAuthenticator) *TaskService {
+func NewTaskService(cfg *config.ServerConfig, logger zerolog.Logger, store store.Store, nodeAuth *middleware.NodeAuthenticator) *TaskService {
 	return &TaskService{
 		config:   cfg,
 		logger:   logger.With().Str("service", "task").Logger(),

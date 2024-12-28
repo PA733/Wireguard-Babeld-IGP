@@ -46,8 +46,6 @@ type Server struct {
 
 // New 创建服务器实例
 func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
-	// 初始化 JWT 密钥
-	middleware.InitJWTSecret(cfg)
 
 	// 创建存储实例
 	store, err := store.NewStore(&store.Config{
@@ -61,18 +59,19 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		return nil, fmt.Errorf("creating store: %w", err)
 	}
 
-	// 创建共享的 NodeAuthenticator
-	nodeAuth := services.NewNodeAuthenticator(logger)
+	// 创建认证中间件
+	jwtAuth := middleware.NewJWTAuthenticator(logger, []byte(cfg.Server.JWT.SecretKey))
+	nodeAuth := middleware.NewNodeAuthenticator(logger, store)
 
 	// 创建服务实例
 	taskService := services.NewTaskService(cfg, logger, store, nodeAuth)
-	nodeService := services.NewNodeService(cfg, logger, store, taskService, nodeAuth)
-	configService, err := services.NewConfigService(cfg, nodeService, nodeAuth, logger, taskService)
+	nodeService := services.NewNodeService(cfg, logger, store, taskService)
+	configService, err := services.NewConfigService(cfg, nodeService, logger, taskService)
 	if err != nil {
 		return nil, fmt.Errorf("creating config service: %w", err)
 	}
 	statusService := services.NewStatusService(cfg, logger, store)
-	userService := services.NewUserService(cfg, logger, store)
+	userService := services.NewUserService(cfg, logger, store, *jwtAuth)
 
 	// 创建基础TCP监听器
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -120,16 +119,26 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
-	// 注册路由
-	userService.RegisterRoutes(router) // 注册用户认证路由（不需要JWT认证）
-
-	// 创建需要JWT认证的路由组
-	protected := router.Group("/")
-	protected.Use(middleware.JWTAuth())
+	api := router.Group("/api")
 	{
-		nodeService.RegisterRoutes(protected)
-		configService.RegisterRoutes(protected)
-		statusService.RegisterRoutes(protected)
+		auth := api.Group("/auth")
+		{
+			userService.RegisterRoutes(auth)
+		}
+
+		// 创建需要JWT认证的路由组
+		dashboard := api.Group("/dashboard")
+		dashboard.Use(jwtAuth.JWTAuth())
+		{
+			nodeService.RegisterRoutes(dashboard)
+			statusService.RegisterRoutes(dashboard)
+		}
+
+		agent := router.Group("/agent")
+		agent.Use(nodeAuth.NodeAuth())
+		{
+			configService.RegisterRoutes(agent)
+		}
 	}
 
 	return &Server{

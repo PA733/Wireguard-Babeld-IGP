@@ -24,39 +24,26 @@ type NodeService struct {
 	store  store.Store
 
 	// 节点管理
-	nodeAuth *NodeAuthenticator
-	nodes    map[int]*types.NodeConfig
-	lastID   int32
+	nodes  map[int]*types.NodeConfig
+	lastID int32
 
 	// 服务依赖
 	taskService *TaskService
 }
 
 // NewNodeService 创建节点服务实例
-func NewNodeService(cfg *config.ServerConfig, logger zerolog.Logger, store store.Store, taskService *TaskService, nodeAuth *NodeAuthenticator) *NodeService {
+func NewNodeService(cfg *config.ServerConfig, logger zerolog.Logger, store store.Store, taskService *TaskService) *NodeService {
 	srv := &NodeService{
 		config:      cfg,
 		logger:      logger.With().Str("service", "node").Logger(),
 		store:       store,
-		nodeAuth:    nodeAuth,
 		nodes:       make(map[int]*types.NodeConfig),
 		taskService: taskService,
 	}
 
-	// 初始化最大节点ID并加载 tokens
-	if nodes, err := store.ListNodes(); err == nil {
+	// 初始化最大节点ID
+	if _, err := store.ListNodes(); err == nil {
 		maxID := int32(0)
-		for _, node := range nodes {
-			if int32(node.ID) > maxID {
-				maxID = int32(node.ID)
-			}
-			// 从数据库加载 token 到 nodeAuth
-			srv.nodeAuth.RegisterNode(node.ID, node.Token)
-			srv.logger.Debug().
-				Int("node_id", node.ID).
-				Str("token", node.Token).
-				Msg("Loaded node token from database")
-		}
 		atomic.StoreInt32(&srv.lastID, maxID)
 	}
 
@@ -129,9 +116,6 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	// 注册节点令牌
-	s.nodeAuth.RegisterNode(config.ID, token)
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":         config.ID,
@@ -216,7 +200,6 @@ func (s *NodeService) UpdateNode(nodeID int, config *types.NodeConfig) error {
 
 // DeleteNode 删除节点
 func (s *NodeService) DeleteNode(nodeID int) error {
-	s.nodeAuth.RemoveNode(nodeID)
 	return s.store.DeleteNode(nodeID)
 }
 
@@ -276,7 +259,6 @@ func (s *NodeService) GenerateNodeToken(nodeID int) (string, error) {
 	}
 
 	tokenStr := base64.URLEncoding.EncodeToString(token)
-	s.nodeAuth.RegisterNode(nodeID, tokenStr)
 
 	s.logger.Debug().
 		Int("node_id", nodeID).

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -116,6 +117,10 @@ func (h *UpdateHandler) fetchConfig() (*types.NodeConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	auth := fmt.Sprintf("%d:%s", h.config.NodeID, h.config.Token)
+	encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
+	req.Header.Add("Authorization", "Basic "+encodedAuth)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

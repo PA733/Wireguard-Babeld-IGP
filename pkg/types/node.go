@@ -4,11 +4,11 @@ import "time"
 
 // NodeConfig 节点配置
 type NodeConfig struct {
-	ID        int       `gorm:"primarykey" json:"id"`  // 节点ID
-	CreatedAt time.Time `json:"created_at"`            // 创建时间
-	UpdatedAt time.Time `json:"updated_at"`            // 更新时间
-	Name      string    `gorm:"size:255" json:"name"`  // 节点名称
-	Token     string    `gorm:"size:255" json:"token"` // 认证令牌
+	ID        int       `gorm:"primarykey;autoIncrement" json:"id"` // 节点ID
+	CreatedAt time.Time `json:"created_at"`                         // 创建时间
+	UpdatedAt time.Time `json:"updated_at"`                         // 更新时间
+	Name      string    `gorm:"size:255" json:"name"`               // 节点名称
+	Token     string    `gorm:"size:255" json:"token"`              // 认证令牌
 
 	// 网络配置
 	IPv4       string `gorm:"size:45" json:"ipv4"`         // IPv4地址

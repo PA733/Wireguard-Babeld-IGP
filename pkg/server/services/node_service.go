@@ -10,7 +10,6 @@ import (
 	"mesh-backend/pkg/types"
 	"net/http"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,8 +23,7 @@ type NodeService struct {
 	store  store.Store
 
 	// 节点管理
-	nodes  map[int]*types.NodeConfig
-	lastID int32
+	nodes map[int]*types.NodeConfig
 
 	// 服务依赖
 	taskService *TaskService
@@ -39,12 +37,6 @@ func NewNodeService(cfg *config.ServerConfig, logger zerolog.Logger, store store
 		store:       store,
 		nodes:       make(map[int]*types.NodeConfig),
 		taskService: taskService,
-	}
-
-	// 初始化最大节点ID
-	if _, err := store.ListNodes(); err == nil {
-		maxID := int32(0)
-		atomic.StoreInt32(&srv.lastID, maxID)
 	}
 
 	return srv
@@ -78,10 +70,9 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 	}
 
 	// 生成节点配置
-	nodeID := s.nextNodeID()
 	now := time.Now()
 
-	token, err := s.GenerateNodeToken(nodeID)
+	token, err := s.GenerateNodeToken()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -91,7 +82,7 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 	endpointBytes, _ := json.Marshal([]string{req.Endpoint})
 	config := &types.NodeConfig{
 		// 基本信息
-		ID:        nodeID,
+		ID:        0, // 自增
 		Name:      req.Name,
 		Token:     token,
 		Peers:     string(peersBytes), // To-Do 添加预设节点
@@ -123,11 +114,6 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 		"token":      token,
 		"public_key": config.PublicKey,
 	})
-}
-
-// nextNodeID 生成下一个节点ID
-func (s *NodeService) nextNodeID() int {
-	return int(atomic.AddInt32(&s.lastID, 1))
 }
 
 func (s *NodeService) HandleGetNode(c *gin.Context) {
@@ -252,7 +238,7 @@ func generateWireGuardKeyPair() (privateKey, publicKey string, err error) {
 }
 
 // GenerateNodeToken 生成节点认证令牌
-func (s *NodeService) GenerateNodeToken(nodeID int) (string, error) {
+func (s *NodeService) GenerateNodeToken() (string, error) {
 	token := make([]byte, 32)
 	if _, err := rand.Read(token); err != nil {
 		return "", fmt.Errorf("generating token: %w", err)
@@ -261,7 +247,6 @@ func (s *NodeService) GenerateNodeToken(nodeID int) (string, error) {
 	tokenStr := base64.URLEncoding.EncodeToString(token)
 
 	s.logger.Debug().
-		Int("node_id", nodeID).
 		Str("token", tokenStr).
 		Msg("Generated and registered new token")
 

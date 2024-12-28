@@ -18,6 +18,7 @@ type MemoryStore struct {
 	users       map[int]*types.User // 用户ID到用户的映射
 	usernames   map[string]int      // 用户名到用户ID的映射
 	lastUserID  int                 // 最后分配的用户ID
+	maxNodeID   int                 // 最大节点ID
 }
 
 // NewMemoryStore 创建内存存储实例
@@ -37,6 +38,14 @@ func NewMemoryStore() *MemoryStore {
 func (s *MemoryStore) CreateNode(node *types.NodeConfig) error {
 	s.Lock()
 	defer s.Unlock()
+
+	// 如果 NodeID 未定义
+	if node.ID == 0 {
+		s.maxNodeID++
+		node.ID = s.maxNodeID
+	} else if node.ID > s.maxNodeID {
+		s.maxNodeID = node.ID
+	}
 
 	if _, exists := s.nodes[node.ID]; exists {
 		return fmt.Errorf("node %d already exists", node.ID)

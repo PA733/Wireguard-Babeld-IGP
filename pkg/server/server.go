@@ -101,7 +101,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle:     15 * time.Second,
-			MaxConnectionAge:      30 * time.Second,
+			MaxConnectionAge:      30 * time.Hour,
 			MaxConnectionAgeGrace: 5 * time.Second,
 			Time:                  5 * time.Second,
 			Timeout:               1 * time.Second,
@@ -134,7 +134,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 			statusService.RegisterRoutes(dashboard)
 		}
 
-		agent := router.Group("/agent")
+		agent := api.Group("/agent")
 		agent.Use(nodeAuth.NodeAuth())
 		{
 			configService.RegisterRoutes(agent)

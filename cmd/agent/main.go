@@ -59,7 +59,7 @@ func main() {
 	}
 
 	// 注册任务处理器
-	agent.RegisterHandler(handlers.NewUpdateHandler(cfg, *log))
+	// agent.RegisterHandler(handlers.NewUpdateHandler(cfg, *log))
 	agent.RegisterHandler(handlers.NewStatusHandler(cfg, *log))
 
 	// 启动Agent

@@ -28,20 +28,22 @@ type NodeConfig struct {
 	LinkLocalNet  string `gorm:"size:45" json:"link_local_net"` // 链路本地网络
 	BabelPort     int    `json:"babel_port"`                    // Babeld端口
 	BabelInterval int    `json:"babel_interval"`                // Babeld更新间隔
+
+	Status NodeStatus `gorm:"foreignKey:ID" json:"status"`
 }
 
 // NodeStatus 节点状态
 type NodeStatus struct {
-	ID            int       `gorm:"primarykey" json:"id"`        // 节点ID
-	CreatedAt     time.Time `json:"created_at"`                  // 创建时间
-	UpdatedAt     time.Time `json:"updated_at"`                  // 更新时间
-	Name          string    `gorm:"size:255" json:"name"`        // 节点名称
-	Version       string    `gorm:"size:50" json:"version"`      // 版本
-	StartTime     time.Time `json:"start_time"`                  // 启动时间
-	LastSeen      time.Time `json:"last_seen"`                   // 最后一次心跳时间
-	LastError     string    `gorm:"type:text" json:"last_error"` // 最后一次错误
-	LastErrorTime string    `json:"last_error_time"`             // 最后一次错误时间
-	Status        string    `gorm:"size:50" json:"status"`       // 状态
+	ID            int       `gorm:"primarykey;autoIncrement" json:"id"` // 节点ID
+	CreatedAt     time.Time `json:"created_at"`                         // 创建时间
+	UpdatedAt     time.Time `json:"updated_at"`                         // 更新时间
+	Name          string    `gorm:"size:255" json:"name"`               // 节点名称
+	Version       string    `gorm:"size:50" json:"version"`             // 版本
+	StartTime     time.Time `json:"start_time"`                         // 启动时间
+	LastSeen      time.Time `json:"last_seen"`                          // 最后一次心跳时间
+	LastError     string    `gorm:"type:text" json:"last_error"`        // 最后一次错误
+	LastErrorTime string    `json:"last_error_time"`                    // 最后一次错误时间
+	Status        string    `gorm:"size:50" json:"status"`              // 状态
 
 	// 系统状态
 	CPUUsage    float64 `json:"cpu_usage"`    // CPU使用率

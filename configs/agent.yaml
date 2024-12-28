@@ -1,6 +1,6 @@
 # Agent配置文件
 node_id: 1  # 节点ID
-token: "YmIL2Gyhvb-iXC-x-XvsC3yCdxuLr8djN53DWds3YUc="  # 节点认证令牌
+token: "your-node-token"  # 节点认证令牌
 
 # 服务端连接信息
 server:

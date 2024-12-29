@@ -157,26 +157,6 @@ func (s *TaskService) UpdateTaskStatus(ctx context.Context, req *pb.UpdateTaskSt
 	}, nil
 }
 
-// Heartbeat 实现心跳检测
-func (s *TaskService) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
-	// 验证节点身份
-	if !s.nodeAuth.ValidateToken(int(req.NodeId), req.Token) {
-		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
-	}
-
-	// 更新节点状态
-	s.nodeMu.Lock()
-	if node, exists := s.nodes[req.NodeId]; exists {
-		node.lastSeen = time.Now()
-	}
-	s.nodeMu.Unlock()
-
-	return &pb.HeartbeatResponse{
-		Success: true,
-		Message: "Heartbeat received",
-	}, nil
-}
-
 // CreateTask 创建新任务
 func (s *TaskService) CreateTask(taskType types.TaskType, nodeID int) (*types.Task, error) {
 	task := &types.Task{

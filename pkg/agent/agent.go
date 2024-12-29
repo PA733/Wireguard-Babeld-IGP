@@ -65,9 +65,6 @@ func (a *Agent) Start() error {
 		return fmt.Errorf("subscribing to tasks: %w", err)
 	}
 
-	// 启动心跳
-	go a.heartbeatLoop()
-
 	return nil
 }
 
@@ -211,39 +208,4 @@ func (a *Agent) reconnect() error {
 	}
 
 	return a.subscribeTasks()
-}
-
-// heartbeatLoop 心跳循环
-func (a *Agent) heartbeatLoop() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		case <-ticker.C:
-			if err := a.sendHeartbeat(); err != nil {
-				a.logger.Error().Err(err).Msg("Heartbeat failed")
-			}
-		}
-	}
-}
-
-// sendHeartbeat 发送心跳
-func (a *Agent) sendHeartbeat() error {
-	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
-	defer cancel()
-
-	req := &pb.HeartbeatRequest{
-		NodeId: int32(a.config.NodeID),
-		Token:  a.config.Token,
-		Status: map[string]string{
-			"status": "running",
-			"time":   time.Now().Format(time.RFC3339),
-		},
-	}
-
-	_, err := a.client.Heartbeat(ctx, req)
-	return err
 }

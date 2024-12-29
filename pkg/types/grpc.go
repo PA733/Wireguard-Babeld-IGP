@@ -2,7 +2,6 @@ package types
 
 import (
 	"context"
-	"time"
 
 	"google.golang.org/grpc"
 )
@@ -15,8 +14,6 @@ type TaskServiceClient interface {
 	SubscribeTasks(ctx context.Context, req *SubscribeRequest) (TaskService_SubscribeTasksClient, error)
 	// UpdateTaskStatus 更新任务状态
 	UpdateTaskStatus(ctx context.Context, req *UpdateTaskStatusRequest) (*UpdateTaskStatusResponse, error)
-	// Heartbeat 发送心跳
-	Heartbeat(ctx context.Context, req *HeartbeatRequest) (*HeartbeatResponse, error)
 }
 
 // RegisterRequest 注册请求
@@ -46,19 +43,6 @@ type UpdateTaskStatusRequest struct {
 
 // UpdateTaskStatusResponse 更新任务状态响应
 type UpdateTaskStatusResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-}
-
-// HeartbeatRequest 心跳请求
-type HeartbeatRequest struct {
-	NodeID int32     `json:"node_id"`
-	Token  string    `json:"token"`
-	Time   time.Time `json:"time"`
-}
-
-// HeartbeatResponse 心跳响应
-type HeartbeatResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
@@ -109,16 +93,6 @@ func (c *taskServiceClient) SubscribeTasks(ctx context.Context, req *SubscribeRe
 func (c *taskServiceClient) UpdateTaskStatus(ctx context.Context, req *UpdateTaskStatusRequest) (*UpdateTaskStatusResponse, error) {
 	var resp UpdateTaskStatusResponse
 	err := c.cc.Invoke(ctx, "/task.TaskService/UpdateTaskStatus", req, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
-// Heartbeat 实现心跳方法
-func (c *taskServiceClient) Heartbeat(ctx context.Context, req *HeartbeatRequest) (*HeartbeatResponse, error) {
-	var resp HeartbeatResponse
-	err := c.cc.Invoke(ctx, "/task.TaskService/Heartbeat", req, &resp)
 	if err != nil {
 		return nil, err
 	}

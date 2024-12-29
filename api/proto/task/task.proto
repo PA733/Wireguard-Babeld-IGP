@@ -14,9 +14,6 @@ service TaskService {
   
   // 更新任务状态
   rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (UpdateTaskStatusResponse) {}
-  
-  // 心跳
-  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
 }
 
 // 注册请求
@@ -56,17 +53,3 @@ message UpdateTaskStatusResponse {
   bool success = 1;
   string message = 2;
 }
-
-// 心跳请求
-message HeartbeatRequest {
-  int32 node_id = 1;
-  string token = 2;
-  map<string, string> status = 3;
-}
-
-// 心跳响应
-message HeartbeatResponse {
-  bool success = 1;
-  string message = 2;
-  map<string, string> commands = 3;
-} 

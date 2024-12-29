@@ -34,24 +34,21 @@ type NodeConfig struct {
 
 // NodeStatus 节点状态
 type NodeStatus struct {
-	ID            int       `gorm:"primarykey;autoIncrement" json:"id"` // 节点ID
-	CreatedAt     time.Time `json:"created_at"`                         // 创建时间
-	UpdatedAt     time.Time `json:"updated_at"`                         // 更新时间
-	Name          string    `gorm:"size:255" json:"name"`               // 节点名称
-	Version       string    `gorm:"size:50" json:"version"`             // 版本
-	StartTime     time.Time `json:"start_time"`                         // 启动时间
-	LastSeen      time.Time `json:"last_seen"`                          // 最后一次心跳时间
-	LastError     string    `gorm:"type:text" json:"last_error"`        // 最后一次错误
-	LastErrorTime string    `json:"last_error_time"`                    // 最后一次错误时间
-	Status        string    `gorm:"size:50" json:"status"`              // 状态
+	ID           int           `gorm:"primarykey" json:"id"`
+	NodeID       int           `gorm:"index" json:"node_id"`
+	Hostname     string        `gorm:"type:varchar(255)" json:"hostname"`
+	IPAddress    string        `gorm:"type:varchar(255)" json:"ip_address"`
+	Metrics      SystemMetrics `gorm:"embedded" json:"metrics"`
+	RunningTasks []string      `gorm:"type:json" json:"running_tasks"`
+	Status       string        `gorm:"type:varchar(50)" json:"status"`
+	Version      string        `gorm:"type:varchar(50)" json:"version"`
+	Timestamp    time.Time     `gorm:"autoUpdateTime" json:"timestamp"`
+}
 
-	// 系统状态
-	CPUUsage    float64 `json:"cpu_usage"`    // CPU使用率
-	MemoryUsage float64 `json:"memory_usage"` // 内存使用率
-	DiskUsage   float64 `json:"disk_usage"`   // 磁盘使用率
-	Uptime      int64   `json:"uptime"`       // 运行时间
-
-	// 网络状态(JSON格式存储)
-	WireGuardStatus string `gorm:"type:text" json:"wireguard_status"` // WireGuard状态
-	BabelStatus     string `gorm:"type:text" json:"babel_status"`     // Babel状态
+// SystemMetrics 系统指标
+type SystemMetrics struct {
+	CPUUsage    float64 `gorm:"type:decimal(5,2)" json:"cpu_usage"`
+	MemoryUsage float64 `gorm:"type:decimal(5,2)" json:"memory_usage"`
+	DiskUsage   float64 `gorm:"type:decimal(5,2)" json:"disk_usage"`
+	Uptime      int64   `gorm:"type:bigint" json:"uptime"`
 }

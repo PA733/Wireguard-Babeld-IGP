@@ -3,14 +3,21 @@ package agent
 import (
 	"context"
 	"fmt"
+	"os"
+	"runtime"
 	"strings"
 	"time"
 
+	spb "mesh-backend/api/proto/status"
 	pb "mesh-backend/api/proto/task"
 	"mesh-backend/pkg/agent/handlers"
 	"mesh-backend/pkg/config"
 
 	"github.com/rs/zerolog"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/mem"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -22,11 +29,17 @@ type Agent struct {
 	logger zerolog.Logger
 
 	// gRPC连接
-	conn   *grpc.ClientConn
-	client pb.TaskServiceClient
+	conn         *grpc.ClientConn
+	client       pb.TaskServiceClient
+	statusClient spb.StatusServiceClient
 
 	// 任务处理
 	taskHandler *handlers.TaskHandler
+
+	// 状态管理
+	hostname     string
+	ipAddress    string
+	runningTasks []string
 
 	// 控制
 	ctx    context.Context
@@ -36,11 +49,19 @@ type Agent struct {
 // New 创建新的Agent实例
 func New(cfg *config.AgentConfig, logger zerolog.Logger) (*Agent, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
 	return &Agent{
-		config: cfg,
-		logger: logger,
-		ctx:    ctx,
-		cancel: cancel,
+		config:    cfg,
+		logger:    logger,
+		ctx:       ctx,
+		cancel:    cancel,
+		hostname:  hostname,
+		ipAddress: cfg.Server.GRPCAddress, // 临时使用服务器地址，实际应该获取本机IP
 	}, nil
 }
 
@@ -65,6 +86,9 @@ func (a *Agent) Start() error {
 		return fmt.Errorf("subscribing to tasks: %w", err)
 	}
 
+	// 启动状态上报
+	go a.startStatusReporting()
+
 	return nil
 }
 
@@ -75,6 +99,100 @@ func (a *Agent) Stop() error {
 		return a.conn.Close()
 	}
 	return nil
+}
+
+// startStatusReporting 开始定期上报状态
+func (a *Agent) startStatusReporting() {
+	ticker := time.NewTicker(30 * time.Second) // 每30秒上报一次状态
+	defer ticker.Stop()
+
+	// 首次立即上报
+	if err := a.reportStatus(); err != nil {
+		a.logger.Error().Err(err).Msg("Initial status report failed")
+	}
+
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-ticker.C:
+			if err := a.reportStatus(); err != nil {
+				a.logger.Error().Err(err).Msg("Status report failed")
+			}
+		}
+	}
+}
+
+// reportStatus 收集并上报状态
+func (a *Agent) reportStatus() error {
+	metrics, err := a.collectMetrics()
+	if err != nil {
+		return fmt.Errorf("collecting metrics: %w", err)
+	}
+
+	status := &spb.NodeStatus{
+		NodeId:       int32(a.config.NodeID),
+		Hostname:     a.hostname,
+		IpAddress:    a.ipAddress,
+		Metrics:      metrics,
+		RunningTasks: a.runningTasks,
+		Status:       "online",
+		Version:      runtime.Version(),
+		Timestamp:    time.Now().UnixNano(),
+	}
+
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := a.statusClient.ReportStatus(ctx, &spb.StatusReport{
+		NodeId: int32(a.config.NodeID),
+		Token:  a.config.Token,
+		Status: status,
+	})
+
+	if err != nil {
+		return fmt.Errorf("reporting status: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("status report failed: %s", resp.Message)
+	}
+
+	return nil
+}
+
+// collectMetrics 收集系统指标
+func (a *Agent) collectMetrics() (*spb.SystemMetrics, error) {
+	// CPU使用率
+	cpuPercent, err := cpu.Percent(time.Second, false)
+	if err != nil {
+		return nil, fmt.Errorf("getting CPU usage: %w", err)
+	}
+
+	// 内存使用率
+	memInfo, err := mem.VirtualMemory()
+	if err != nil {
+		return nil, fmt.Errorf("getting memory info: %w", err)
+	}
+
+	// 磁盘使用率
+	diskInfo, err := disk.Usage("/")
+	if err != nil {
+		return nil, fmt.Errorf("getting disk info: %w", err)
+	}
+
+	// 运行时间
+	hostInfo, err := host.Info()
+	if err != nil {
+		return nil, fmt.Errorf("getting host info: %w", err)
+	}
+
+	return &spb.SystemMetrics{
+		CpuUsage:    cpuPercent[0],
+		MemoryUsage: memInfo.UsedPercent,
+		DiskUsage:   diskInfo.UsedPercent,
+		Uptime:      int64(hostInfo.Uptime),
+	}, nil
 }
 
 // connect 连接到gRPC服务器
@@ -88,13 +206,13 @@ func (a *Agent) connect() error {
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                10 * time.Second, // 每10秒发送一次keepalive ping
-			Timeout:             3 * time.Second,  // 3秒内没有响应则认为连接断开
-			PermitWithoutStream: true,             // 允许在没有活动流的情况下发送keepalive
+			Time:                10 * time.Second,
+			Timeout:             3 * time.Second,
+			PermitWithoutStream: true,
 		}),
 		grpc.WithDefaultServiceConfig(`{
 			"methodConfig": [{
-				"name": [{"service": "task.TaskService"}],
+				"name": [{"service": "task.TaskService"}, {"service": "status.StatusService"}],
 				"retryPolicy": {
 					"MaxAttempts": 5,
 					"InitialBackoff": "0.1s",
@@ -118,6 +236,7 @@ func (a *Agent) connect() error {
 
 	a.conn = conn
 	a.client = pb.NewTaskServiceClient(conn)
+	a.statusClient = spb.NewStatusServiceClient(conn)
 	return nil
 }
 

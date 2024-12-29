@@ -70,7 +70,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating config service: %w", err)
 	}
-	statusService := services.NewStatusService(cfg, logger, store)
+	statusService := services.NewStatusService(cfg, logger, store, nodeAuth)
 	userService := services.NewUserService(cfg, logger, store, *jwtAuth)
 
 	// 创建基础TCP监听器
@@ -112,6 +112,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 
 	// 注册服务
 	taskService.RegisterGRPC(grpcServer)
+	statusService.RegisterGRPC(grpcServer)
 	reflection.Register(grpcServer)
 
 	// 创建 Gin 引擎
@@ -131,7 +132,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		dashboard.Use(jwtAuth.JWTAuth())
 		{
 			nodeService.RegisterRoutes(dashboard)
-			statusService.RegisterRoutes(dashboard)
+			// statusService.RegisterRoutes(dashboard)
 		}
 
 		agent := api.Group("/agent")

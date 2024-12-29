@@ -1,9 +1,5 @@
 package services
 
-import (
-	"mesh-backend/pkg/types"
-)
-
 // NodeService 实现节点管理服务
 // type NodeService struct {
 // 	config *config.ServerConfig
@@ -184,15 +180,15 @@ import (
 // 	store  store.Store
 // }
 
-// UpdateNodeStatus 更新节点状态
-func (s *StatusService) UpdateNodeStatus(status *types.NodeStatus) error {
-	return s.store.UpdateNodeStatus(status.ID, status)
-}
+// // UpdateNodeStatus 更新节点状态
+// func (s *StatusService) UpdateNodeStatus(status *types.NodeStatus) error {
+// 	return s.store.UpdateNodeStatus(status.ID, status)
+// }
 
-// GetNodeStatus 获取节点状态
-func (s *StatusService) GetNodeStatus(nodeID int) (*types.NodeStatus, error) {
-	return s.store.GetNodeStatus(nodeID)
-}
+// // GetNodeStatus 获取节点状态
+// func (s *StatusService) GetNodeStatus(nodeID int) (*types.NodeStatus, error) {
+// 	return s.store.GetNodeStatus(nodeID)
+// }
 
 // HandleGetStatus HTTP处理器：获取系统状态
 // func (s *StatusService) HandleGetStatus(w http.ResponseWriter, r *http.Request) {

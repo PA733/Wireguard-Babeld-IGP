@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package status;
+
+option go_package = "mesh-backend/api/proto/status";
+
+// 状态服务定义
+service StatusService {
+  // 上报节点状态
+  rpc ReportStatus(StatusReport) returns (StatusResponse) {}
+  
+  // 订阅节点状态更新
+  rpc SubscribeStatus(StatusSubscribeRequest) returns (stream NodeStatus) {}
+}
+
+// 节点状态
+message NodeStatus {
+  int32 node_id = 1;
+  string hostname = 2;
+  string ip_address = 3;
+  SystemMetrics metrics = 4;
+  repeated string running_tasks = 5;
+  string status = 6;
+  string version = 7;
+  int64 timestamp = 8;
+}
+
+// 系统指标
+message SystemMetrics {
+  double cpu_usage = 1;
+  double memory_usage = 2;
+  double disk_usage = 3;
+  int64 uptime = 4;
+}
+
+// 状态上报请求
+message StatusReport {
+  int32 node_id = 1;
+  string token = 2;
+  NodeStatus status = 3;
+}
+
+// 状态上报响应
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// 状态订阅请求
+message StatusSubscribeRequest {
+  string token = 1;
+}

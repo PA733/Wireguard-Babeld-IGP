@@ -5,11 +5,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"mesh-backend/pkg/config"
 	"mesh-backend/pkg/store"
 	"mesh-backend/pkg/types"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -80,6 +82,12 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 
 	peersBytes, _ := json.Marshal([]string{})
 	endpointBytes, _ := json.Marshal([]string{req.Endpoint})
+	var ipv4, ipv6 string
+	if strings.Contains(req.Endpoint, ".") {
+		ipv4 = req.Endpoint
+	} else {
+		ipv6 = req.Endpoint
+	}
 	config := &types.NodeConfig{
 		// 基本信息
 		ID:        0, // 自增
@@ -87,6 +95,8 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 		Token:     token,
 		Peers:     string(peersBytes), // To-Do 添加预设节点
 		Endpoints: string(endpointBytes),
+		IPv4:      ipv4,
+		IPv6:      ipv6,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -159,7 +169,17 @@ func (s *NodeService) GetNode(nodeID int) (*types.NodeConfig, error) {
 
 // ListNodes 列出所有节点
 func (s *NodeService) ListNodes() ([]*types.NodeConfig, error) {
-	return s.store.ListNodes()
+	nodes, err := s.store.ListNodes()
+	if err != nil {
+		return nil, fmt.Errorf("querying nodes: %w", err)
+	}
+
+	for _, node := range nodes {
+		node.Status.Metrics.CPUUsage = math.Round(node.Status.Metrics.CPUUsage*100) / 100
+		node.Status.Metrics.DiskUsage = math.Round(node.Status.Metrics.DiskUsage*100) / 100
+	}
+
+	return nodes, nil
 }
 
 // UpdateNode 更新节点配置

@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"mesh-backend/pkg/agent"
-	"mesh-backend/pkg/agent/handlers"
 	"mesh-backend/pkg/config"
 	"mesh-backend/pkg/logger"
 )
@@ -57,10 +56,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error creating agent: %v\n", err)
 		os.Exit(1)
 	}
-
-	// 注册任务处理器
-	// agent.RegisterHandler(handlers.NewUpdateHandler(cfg, *log))
-	agent.RegisterHandler(handlers.NewStatusHandler(cfg, *log))
 
 	// 启动Agent
 	if err := agent.Start(); err != nil {

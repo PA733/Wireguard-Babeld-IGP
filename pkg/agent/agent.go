@@ -2,20 +2,13 @@ package agent
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	pb "mesh-backend/api/proto/task"
+	"mesh-backend/pkg/agent/handlers"
 	"mesh-backend/pkg/config"
-	"mesh-backend/pkg/types"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
@@ -33,8 +26,7 @@ type Agent struct {
 	client pb.TaskServiceClient
 
 	// 任务处理
-	handlers []types.TaskHandler
-	taskCh   chan *pb.Task
+	taskHandler *handlers.TaskHandler
 
 	// 控制
 	ctx    context.Context
@@ -45,12 +37,10 @@ type Agent struct {
 func New(cfg *config.AgentConfig, logger zerolog.Logger) (*Agent, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Agent{
-		config:   cfg,
-		logger:   logger,
-		taskCh:   make(chan *pb.Task, 100),
-		ctx:      ctx,
-		cancel:   cancel,
-		handlers: make([]types.TaskHandler, 0),
+		config: cfg,
+		logger: logger,
+		ctx:    ctx,
+		cancel: cancel,
 	}, nil
 }
 
@@ -61,6 +51,10 @@ func (a *Agent) Start() error {
 		return fmt.Errorf("connecting to server: %w", err)
 	}
 
+	// 初始化任务处理器
+	a.taskHandler = handlers.NewTaskHandler(a.config, a.logger, a.client, a.ctx)
+	a.taskHandler.Start()
+
 	// 注册节点
 	if err := a.register(); err != nil {
 		return fmt.Errorf("registering node: %w", err)
@@ -70,9 +64,6 @@ func (a *Agent) Start() error {
 	if err := a.subscribeTasks(); err != nil {
 		return fmt.Errorf("subscribing to tasks: %w", err)
 	}
-
-	// 启动任务处理
-	go a.processTasksLoop()
 
 	// 启动心跳
 	go a.heartbeatLoop()
@@ -87,11 +78,6 @@ func (a *Agent) Stop() error {
 		return a.conn.Close()
 	}
 	return nil
-}
-
-// RegisterHandler 注册任务处理器
-func (a *Agent) RegisterHandler(handler types.TaskHandler) {
-	a.handlers = append(a.handlers, handler)
 }
 
 // connect 连接到gRPC服务器
@@ -206,175 +192,7 @@ func (a *Agent) handleTaskStream(stream pb.TaskService_SubscribeTasksClient) {
 			return
 		}
 
-		a.taskCh <- task
-	}
-}
-
-// processTasksLoop 处理任务循环
-func (a *Agent) processTasksLoop() {
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		case task := <-a.taskCh:
-			go a.processTask(task)
-		}
-	}
-}
-
-// processTask 处理单个任务
-func (a *Agent) processTask(task *pb.Task) {
-	a.logger.Info().
-		Str("task_id", task.Id).
-		Str("type", task.Type).
-		Msg("Processing task")
-
-	var err error
-	switch task.Type {
-	case string(types.TaskTypeUpdate):
-		err = a.handleConfigUpdate(task)
-	default:
-		err = fmt.Errorf("unknown task type: %s", task.Type)
-	}
-
-	if err != nil {
-		a.logger.Error().Err(err).
-			Str("task_id", task.Id).
-			Msg("Failed to process task")
-	}
-}
-
-// handleConfigUpdate 处理配置更新任务
-func (a *Agent) handleConfigUpdate(task *pb.Task) error {
-	// 获取最新配置
-	url := fmt.Sprintf("%s/api/agent/config/%d", a.config.Server.Address, a.config.NodeID)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("fetching config: %w", err)
-	}
-
-	auth := fmt.Sprintf("%d:%s", a.config.NodeID, a.config.Token)
-	encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
-	req.Header.Add("Authorization", "Basic "+encodedAuth)
-	// 发送请求
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("发送请求失败:%s", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	var config types.NodeConfig
-	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
-		return fmt.Errorf("decoding config: %w", err)
-	}
-
-	// 更新 WireGuard 配置
-	var configs map[string]string
-	err = json.Unmarshal([]byte(config.WireGuard), &configs)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := a.updateWireGuardConfig(configs); err != nil {
-		return fmt.Errorf("updating wireguard config: %w", err)
-	}
-
-	// 更新 Babeld 配置
-	if err := a.updateBabeldConfig(config.Babel); err != nil {
-		return fmt.Errorf("updating babeld config: %w", err)
-	}
-
-	a.updateTaskStatus(task, &types.TaskResult{
-		Status: types.TaskStatusSuccess,
-	})
-	a.logger.Info().Msg("Configuration updated successfully")
-	return nil
-}
-
-// updateWireGuardConfig 更新 WireGuard 配置
-func (a *Agent) updateWireGuardConfig(configs map[string]string) error {
-	for peerName, config := range configs {
-		configPath := filepath.Join(a.config.WireGuard.ConfigPath, fmt.Sprintf("%s%s.conf", a.config.WireGuard.Prefix, peerName))
-		if !a.config.Runtime.DryRun {
-			if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
-				return fmt.Errorf("writing wireguard config: %w", err)
-			}
-		} else {
-			a.logger.Info().Str("DryRun", "wireguard_config").Str("path", configPath).Msg("Would run: " + config)
-		}
-
-		// 重启 WireGuard 接口
-		if err := a.RestartWireGuard(fmt.Sprintf("%s%s", a.config.WireGuard.Prefix, peerName)); err != nil {
-			return fmt.Errorf("restarting wireguard: %w", err)
-		}
-	}
-	return nil
-}
-
-// RestartWireGuard 重启 WireGuard
-func (a *Agent) RestartWireGuard(interfaceName string) error {
-	cmd := exec.Command("systemctl", "restart", "wg-quick@"+interfaceName)
-	if !a.config.Runtime.DryRun {
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("restarting wireguard: %w", err)
-		}
-	} else {
-		a.logger.Info().Str("DryRun", "wireguard_interface").Msg("Would run: " + cmd.String())
-	}
-	return nil
-}
-
-// updateBabeldConfig 更新 Babeld 配置
-func (a *Agent) updateBabeldConfig(config string) error {
-	config = strings.ReplaceAll(config, "{WGPrefix}", a.config.WireGuard.Prefix)
-	if !a.config.Runtime.DryRun {
-		if err := os.WriteFile(a.config.Babel.ConfigPath, []byte(config), 0644); err != nil {
-			return fmt.Errorf("writing babeld config: %w", err)
-		}
-	} else {
-		a.logger.Info().Str("DryRun", "babeld_config").Msg("Would run: " + config)
-	}
-
-	// 重启 Babeld 进程
-	if err := a.RestartBabeld(); err != nil {
-		return fmt.Errorf("restarting babeld: %w", err)
-	}
-	return nil
-}
-
-func (a *Agent) RestartBabeld() error {
-	cmd := exec.Command("systemctl", "restart", "babeld")
-	if !a.config.Runtime.DryRun {
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("restarting babeld: %w", err)
-		}
-	} else {
-		a.logger.Info().Str("DryRun", "babeld").Msg("Would run: " + cmd.String())
-	}
-	return nil
-}
-
-// updateTaskStatus 更新任务状态
-func (a *Agent) updateTaskStatus(task *pb.Task, result *types.TaskResult) {
-	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
-	defer cancel()
-
-	req := &pb.UpdateTaskStatusRequest{
-		TaskId: task.Id,
-		Status: string(result.Status),
-		Error:  result.Error,
-	}
-
-	_, err := a.client.UpdateTaskStatus(ctx, req)
-	if err != nil {
-		a.logger.Error().
-			Err(err).
-			Str("task_id", task.Id).
-			Msg("Failed to update task status")
+		a.taskHandler.EnqueueTask(task)
 	}
 }
 

@@ -188,7 +188,7 @@ func (s *GormStore) CreateNode(node *types.NodeConfig) error {
 // GetNode 获取节点
 func (s *GormStore) GetNode(nodeID int) (*types.NodeConfig, error) {
 	var node types.NodeConfig
-	result := s.db.First(&node, nodeID)
+	result := s.db.Preload("Status").First(&node, nodeID)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("node %d not found", nodeID)
@@ -225,7 +225,7 @@ func (s *GormStore) DeleteNode(nodeID int) error {
 // ListNodes 列出所有节点
 func (s *GormStore) ListNodes() ([]*types.NodeConfig, error) {
 	var nodes []*types.NodeConfig
-	result := s.db.Find(&nodes)
+	result := s.db.Preload("Status").Find(&nodes)
 	if result.Error != nil {
 		return nil, fmt.Errorf("querying nodes: %w", result.Error)
 	}

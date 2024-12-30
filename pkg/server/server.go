@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -11,7 +13,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 
@@ -76,9 +77,20 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 
 	// 创建基础TCP监听器
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("creating listener: %w", err)
+	}
+	// 如果启用 tls
+	if cfg.Server.TLS.Enabled {
+		cert, err := tls.LoadX509KeyPair(cfg.Server.TLS.Cert, cfg.Server.TLS.Key)
+		if err != nil {
+			log.Fatalf("failed to load key pair: %s", err)
+		}
+		listener = tls.NewListener(listener, &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		})
 	}
 
 	// 创建多路复用器
@@ -86,13 +98,6 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 
 	// 创建gRPC服务器
 	var opts []grpc.ServerOption
-	if cfg.Server.TLS.Enabled {
-		creds, err := credentials.NewServerTLSFromFile(cfg.Server.TLS.Cert, cfg.Server.TLS.Key)
-		if err != nil {
-			return nil, fmt.Errorf("loading TLS credentials: %w", err)
-		}
-		opts = append(opts, grpc.Creds(creds))
-	}
 
 	// 添加服务器选项
 	opts = append(opts,

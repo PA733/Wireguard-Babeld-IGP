@@ -1,7 +1,7 @@
 package store
 
 import (
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 )
 
 // SQLiteStore SQLite存储实现

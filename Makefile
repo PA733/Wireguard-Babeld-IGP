@@ -10,7 +10,7 @@ BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/mesh-server
 AGENT_BIN := $(BIN_DIR)/mesh-agent
 
-all: server agent
+all: proto frontend server agent
 
 # 构建服务端
 server:
@@ -23,6 +23,13 @@ agent:
 	@echo "Building agent..."
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(AGENT_BIN) ./cmd/agent
+
+# 构建前端
+frontend:
+	@echo "Build frontend..."
+	cd assets && pnpm install
+	cd assets && pnpm run build
+	cp -r ./assets/dist ./pkg/server/static/
 
 # 清理构建产物
 clean:

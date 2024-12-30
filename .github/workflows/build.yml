@@ -44,7 +44,11 @@ jobs:
         cache: 'pnpm'
         cache-dependency-path: 'assets/pnpm-lock.yaml'
 
-    - name: Build
+    - name: Build Frontend
+      run: make frontend
+  
+
+    - name: Build Server
       run: make server
 
     - name: Upload Artifact

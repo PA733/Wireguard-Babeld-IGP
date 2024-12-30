@@ -1,0 +1,39 @@
+name: Makefile CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build_server:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version-file: go.mod
+        check-latest: true
+        cache-dependency-path: go.sum
+
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
+
+    - name: Generate Protocol Files
+      run: |
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+        make proto
+
+    - name: Build
+      run: make server
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Server
+        path: bin/

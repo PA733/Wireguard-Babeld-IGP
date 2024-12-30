@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,33 +14,96 @@ import (
 //go:embed dist/*
 var content embed.FS
 
-// SPAFileSystem wraps the existing filesystem with SPA fallback
-type SPAFileSystem struct {
-	fs http.FileSystem
+func Register(r *gin.Engine) {
+	r.Use(Serve("/", EmbedFolder(content, "static/dist")))
+	r.NoRoute(func(c *gin.Context) {
+		data, err := content.ReadFile("static/dist/index.html")
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+	})
 }
 
-func (s SPAFileSystem) Open(name string) (http.File, error) {
-	f, err := s.fs.Open(name)
-	if os.IsNotExist(err) {
-		return s.fs.Open("index.html")
+const INDEX = "index.html"
+
+type ServeFileSystem interface {
+	http.FileSystem
+	Exists(prefix string, path string) bool
+}
+
+type localFileSystem struct {
+	http.FileSystem
+	root    string
+	indexes bool
+}
+
+func LocalFile(root string, indexes bool) *localFileSystem {
+	return &localFileSystem{
+		FileSystem: gin.Dir(root, indexes),
+		root:       root,
+		indexes:    indexes,
 	}
-	return f, err
 }
 
-// GetFileSystem 返回嵌入的文件系统
-func GetFileSystem() http.FileSystem {
-	fsys, err := fs.Sub(content, "dist")
+func (l *localFileSystem) Exists(prefix string, filepath string) bool {
+	if p := strings.TrimPrefix(filepath, prefix); len(p) < len(filepath) {
+		name := path.Join(l.root, p)
+		stats, err := os.Stat(name)
+		if err != nil {
+			return false
+		}
+		if stats.IsDir() {
+			if !l.indexes {
+				index := path.Join(name, INDEX)
+				_, err := os.Stat(index)
+				if err != nil {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func ServeRoot(urlPrefix, root string) gin.HandlerFunc {
+	return Serve(urlPrefix, LocalFile(root, false))
+}
+
+// Static returns a middleware handler that serves static files in the given directory.
+func Serve(urlPrefix string, fs ServeFileSystem) gin.HandlerFunc {
+	fileserver := http.FileServer(fs)
+	if urlPrefix != "" {
+		fileserver = http.StripPrefix(urlPrefix, fileserver)
+	}
+	return func(c *gin.Context) {
+		if fs.Exists(urlPrefix, c.Request.URL.Path) {
+			fileserver.ServeHTTP(c.Writer, c.Request)
+			c.Abort()
+		}
+	}
+}
+
+type embedFileSystem struct {
+	http.FileSystem
+}
+
+func (e embedFileSystem) Exists(prefix string, path string) bool {
+	_, err := e.Open(path)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func EmbedFolder(fsEmbed embed.FS, targetPath string) ServeFileSystem {
+	fsys, err := fs.Sub(fsEmbed, targetPath)
 	if err != nil {
 		panic(err)
 	}
-	return http.FS(fsys)
-}
-
-func Register(r *gin.Engine) {
-	// 设置静态文件服务
-	r.NoRoute(func(c *gin.Context) {
-		spaFS := SPAFileSystem{fs: GetFileSystem()}
-		fileServer := http.FileServer(spaFS)
-		fileServer.ServeHTTP(c.Writer, c.Request)
-	})
+	return embedFileSystem{
+		FileSystem: http.FS(fsys),
+	}
 }

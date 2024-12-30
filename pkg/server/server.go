@@ -18,9 +18,8 @@ import (
 	"mesh-backend/pkg/config"
 	"mesh-backend/pkg/server/middleware"
 	"mesh-backend/pkg/server/services"
-	"mesh-backend/pkg/store"
-
 	"mesh-backend/pkg/server/static"
+	"mesh-backend/pkg/store"
 
 	"github.com/gin-gonic/gin"
 )
@@ -144,6 +143,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		}
 	}
 
+	// static.Register(router)
 	static.Register(router)
 
 	return &Server{

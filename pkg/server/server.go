@@ -90,6 +90,7 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 		}
 		listener = tls.NewListener(listener, &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			NextProtos:   []string{"http/1.1", "h2"},
 		})
 	}
 

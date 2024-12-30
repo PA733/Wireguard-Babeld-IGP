@@ -19,6 +19,7 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
@@ -197,13 +198,26 @@ func (a *Agent) collectMetrics() (*spb.SystemMetrics, error) {
 
 // connect 连接到gRPC服务器
 func (a *Agent) connect() error {
-	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
-	defer cancel()
+	var creds credentials.TransportCredentials
+	if a.config.Server.TLS.Enabled {
+		var err error
+		// 目录为空
+		if a.config.Server.TLS.CACert == "" {
+			creds = credentials.NewTLS(nil)
+		} else {
+			creds, err = credentials.NewClientTLSFromFile(a.config.Server.TLS.CACert, "")
+		}
+		if err != nil {
+			return fmt.Errorf("loading CA cert: %w", err)
+		}
+	} else {
+		creds = insecure.NewCredentials()
+		a.logger.Warn().Msg("TLS is disabled")
+	}
 
 	// 设置 gRPC 连接选项
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                10 * time.Second,
@@ -225,8 +239,7 @@ func (a *Agent) connect() error {
 	}
 
 	// 连接服务器
-	conn, err := grpc.DialContext(
-		ctx,
+	client, err := grpc.NewClient(
 		a.config.Server.GRPCAddress,
 		opts...,
 	)
@@ -234,9 +247,9 @@ func (a *Agent) connect() error {
 		return fmt.Errorf("connecting to server: %w", err)
 	}
 
-	a.conn = conn
-	a.client = pb.NewTaskServiceClient(conn)
-	a.statusClient = spb.NewStatusServiceClient(conn)
+	a.conn = client
+	a.client = pb.NewTaskServiceClient(client)
+	a.statusClient = spb.NewStatusServiceClient(client)
 	return nil
 }
 

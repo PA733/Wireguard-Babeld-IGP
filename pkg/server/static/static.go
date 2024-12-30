@@ -15,9 +15,9 @@ import (
 var content embed.FS
 
 func Register(r *gin.Engine) {
-	r.Use(Serve("/", EmbedFolder(content, "static/dist")))
+	r.Use(Serve("/", EmbedFolder(content, "dist")))
 	r.NoRoute(func(c *gin.Context) {
-		data, err := content.ReadFile("static/dist/index.html")
+		data, err := content.ReadFile("dist/index.html")
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return

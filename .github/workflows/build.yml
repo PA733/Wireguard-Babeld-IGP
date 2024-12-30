@@ -12,6 +12,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
 
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -40,8 +42,13 @@ jobs:
       with:
         node-version: 22
         cache: 'pnpm'
+        cache-dependency-path: 'assets/pnpm-lock.yaml'
 
-    - name: Build
+    - name: Build Frontend
+      run: make frontend
+  
+
+    - name: Build Server
       run: make server
 
     - name: Upload Artifact

@@ -38,3 +38,6 @@ data/*
 
 # Build
 bin/*
+
+# Static File
+pkg/server/static/dist/*

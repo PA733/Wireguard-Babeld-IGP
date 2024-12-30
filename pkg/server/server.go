@@ -20,6 +20,8 @@ import (
 	"mesh-backend/pkg/server/services"
 	"mesh-backend/pkg/store"
 
+	"mesh-backend/pkg/server/static"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -141,6 +143,8 @@ func New(cfg *config.ServerConfig, logger zerolog.Logger) (*Server, error) {
 			configService.RegisterRoutes(agent)
 		}
 	}
+
+	static.Register(router)
 
 	return &Server{
 		config:        cfg,

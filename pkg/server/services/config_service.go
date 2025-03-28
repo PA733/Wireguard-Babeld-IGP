@@ -109,22 +109,6 @@ func (s *ConfigService) GenerateNodeConfig(nodeID int) (*types.NodeConfig, error
 	return config, nil
 }
 
-// UpdateConfig 更新节点配置
-func (s *ConfigService) UpdateConfig(nodeID int, config *types.NodeConfig) error {
-	// 更新节点配置
-	if err := s.nodeService.UpdateNode(nodeID, config); err != nil {
-		return fmt.Errorf("updating node config: %w", err)
-	}
-
-	// 创建配置更新任务
-	_, err := s.taskService.CreateTask(types.TaskTypeUpdate, nodeID)
-	if err != nil {
-		return fmt.Errorf("creating update task: %w", err)
-	}
-
-	return nil
-}
-
 // HandleGetConfig HTTP处理器：获取节点配置
 func (s *ConfigService) HandleGetConfig(c *gin.Context) {
 	nodeID, err := strconv.Atoi(c.Param("id"))

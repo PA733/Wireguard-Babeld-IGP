@@ -29,13 +29,12 @@ type NodeConfig struct {
 	BabelPort     int    `json:"babel_port"`                    // Babeld端口
 	BabelInterval int    `json:"babel_interval"`                // Babeld更新间隔
 
-	Status NodeStatus `gorm:"foreignKey:ID" json:"status"`
+	Status NodeStatus `gorm:"foreignKey:NodeID" json:"status"`
 }
 
 // NodeStatus 节点状态
 type NodeStatus struct {
-	ID           int           `gorm:"primarykey" json:"id"`
-	NodeID       int           `gorm:"index" json:"node_id"`
+	NodeID       int           `gorm:"primarykey" json:"node_id"`
 	Hostname     string        `gorm:"type:varchar(255)" json:"hostname"`
 	IPAddress    string        `gorm:"type:varchar(255)" json:"ip_address"`
 	Metrics      SystemMetrics `gorm:"embedded" json:"metrics"`

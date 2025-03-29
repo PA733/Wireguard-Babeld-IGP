@@ -234,7 +234,7 @@ func (s *GormStore) ListNodes() ([]*types.NodeConfig, error) {
 
 // UpdateNodeStatus 更新节点状态
 func (s *GormStore) UpdateNodeStatus(nodeID int, status *types.NodeStatus) error {
-	status.ID = nodeID
+	status.NodeID = nodeID
 	result := s.db.Save(status)
 	if result.Error != nil {
 		return fmt.Errorf("upserting node status: %w", result.Error)
@@ -245,7 +245,7 @@ func (s *GormStore) UpdateNodeStatus(nodeID int, status *types.NodeStatus) error
 // GetNodeStatus 获取节点状态
 func (s *GormStore) GetNodeStatus(nodeID int) (*types.NodeStatus, error) {
 	var status types.NodeStatus
-	result := s.db.First(&status, nodeID)
+	result := s.db.Where("node_id = ?", nodeID).First(&status)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("status for node %d not found", nodeID)

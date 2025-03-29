@@ -29,7 +29,7 @@ type NodeConfig struct {
 	BabelPort     int    `json:"babel_port"`                    // Babeld端口
 	BabelInterval int    `json:"babel_interval"`                // Babeld更新间隔
 
-	Status NodeStatus `gorm:"foreignKey:NodeID" json:"status"`
+	Status NodeStatus `gorm:"foreignKey:NodeID;references:ID;onUpdate:CASCADE" json:"status"`
 }
 
 // NodeStatus 节点状态

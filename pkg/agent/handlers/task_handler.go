@@ -140,10 +140,59 @@ func (h *TaskHandler) handleConfigUpdate(task *pb.Task) error {
 	return nil
 }
 
+// readFileContent 读取文件内容
+func (h *TaskHandler) readFileContent(filePath string) (string, error) {
+	if h.config.Runtime.DryRun {
+		return "", nil
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return "", nil // 文件不存在返回空字符串
+	}
+
+	// 读取文件内容
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("reading file %s: %w", filePath, err)
+	}
+
+	return string(content), nil
+}
+
+// configChanged 检查配置是否有变化
+func (h *TaskHandler) configChanged(filePath, newConfig string) (bool, error) {
+	if h.config.Runtime.DryRun {
+		return true, nil // 在DryRun模式下总是认为配置有变化
+	}
+
+	// 读取当前配置
+	currentConfig, err := h.readFileContent(filePath)
+	if err != nil {
+		return false, err
+	}
+
+	// 比较配置内容
+	return currentConfig != newConfig, nil
+}
+
 // updateWireGuardConfig 更新 WireGuard 配置
 func (h *TaskHandler) updateWireGuardConfig(configs map[string]string) error {
 	for peerName, config := range configs {
 		configPath := filepath.Join(h.config.WireGuard.ConfigPath, fmt.Sprintf("%s%s.conf", h.config.WireGuard.Prefix, peerName))
+
+		// 检查配置是否有变化
+		changed, err := h.configChanged(configPath, config)
+		if err != nil {
+			return fmt.Errorf("checking wireguard config: %w", err)
+		}
+
+		if !changed {
+			h.logger.Info().Str("peer", peerName).Msg("WireGuard配置未变更，跳过重启")
+			continue
+		}
+
+		// 写入新配置
 		if !h.config.Runtime.DryRun {
 			if err := os.WriteFile(configPath, []byte(config), 0600); err != nil {
 				return fmt.Errorf("writing wireguard config: %w", err)
@@ -176,6 +225,19 @@ func (h *TaskHandler) restartWireGuard(interfaceName string) error {
 // updateBabeldConfig 更新 Babeld 配置
 func (h *TaskHandler) updateBabeldConfig(config string) error {
 	config = strings.ReplaceAll(config, "{WGPrefix}", h.config.WireGuard.Prefix)
+
+	// 检查配置是否有变化
+	changed, err := h.configChanged(h.config.Babel.ConfigPath, config)
+	if err != nil {
+		return fmt.Errorf("checking babeld config: %w", err)
+	}
+
+	if !changed {
+		h.logger.Info().Msg("Babeld配置未变更，跳过重启")
+		return nil
+	}
+
+	// 写入新配置
 	if !h.config.Runtime.DryRun {
 		if err := os.WriteFile(h.config.Babel.ConfigPath, []byte(config), 0644); err != nil {
 			return fmt.Errorf("writing babeld config: %w", err)

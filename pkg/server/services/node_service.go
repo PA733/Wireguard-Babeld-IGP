@@ -118,6 +118,31 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 		return
 	}
 
+	// 异步触发所有现有节点的配置更新任务（不包括新创建的节点）
+	go func() {
+		// 获取所有节点
+		nodes, err := s.ListNodes()
+		if err != nil {
+			s.logger.Error().Err(err).Msg("Failed to list nodes for config update")
+			return
+		}
+
+		// 为每个现有节点触发配置更新任务，但不包括新创建的节点
+		for _, node := range nodes {
+			// 跳过新创建的节点，因为它还没有连接，更新必然失败
+			if node.ID == config.ID {
+				continue
+			}
+
+			// 触发节点配置更新任务
+			if err := s.TriggerConfigUpdate(node.ID); err != nil {
+				s.logger.Warn().Err(err).Int("node_id", node.ID).Msg("Failed to trigger config update for node")
+				// 继续处理其他节点，不中断流程
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}()
+
 	c.JSON(http.StatusOK, gin.H{
 		"id":         config.ID,
 		"name":       config.Name,
@@ -200,6 +225,26 @@ func (s *NodeService) UpdateNode(nodeID int, config *types.NodeConfig) error {
 
 	// 确保 token 在 nodeAuth 中注册
 	// s.nodeAuth.RegisterNode(nodeID, config.Token)
+
+	// 异步触发所有节点的配置更新任务
+	go func() {
+		// 获取所有节点
+		nodes, err := s.ListNodes()
+		if err != nil {
+			s.logger.Error().Err(err).Msg("Failed to list nodes for config update")
+			return
+		}
+
+		// 为每个节点触发配置更新任务
+		for _, node := range nodes {
+			// 触发节点配置更新任务
+			if err := s.TriggerConfigUpdate(node.ID); err != nil {
+				s.logger.Warn().Err(err).Int("node_id", node.ID).Msg("Failed to trigger config update for node")
+				// 继续处理其他节点，不中断流程
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}()
 
 	return nil
 }

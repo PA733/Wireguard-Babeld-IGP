@@ -201,10 +201,28 @@ func (h *TaskHandler) updateWireGuardConfig(configs map[string]string) error {
 			h.logger.Info().Str("DryRun", "wireguard_config").Str("path", configPath).Msg("Would run: " + config)
 		}
 
+		// 启用 WireGuard 接口
+		if err := h.enableWireGuard(fmt.Sprintf("%s%s", h.config.WireGuard.Prefix, peerName)); err != nil {
+			return fmt.Errorf("enabling wireguard: %w", err)
+		}
+
 		// 重启 WireGuard 接口
 		if err := h.restartWireGuard(fmt.Sprintf("%s%s", h.config.WireGuard.Prefix, peerName)); err != nil {
 			return fmt.Errorf("restarting wireguard: %w", err)
 		}
+	}
+	return nil
+}
+
+// enableWireGuard 启用 WireGuard 接口
+func (h *TaskHandler) enableWireGuard(interfaceName string) error {
+	cmd := exec.Command("systemctl", "enable", "wg-quick@"+interfaceName)
+	if !h.config.Runtime.DryRun {
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("enabling wireguard: %w", err)
+		}
+	} else {
+		h.logger.Info().Str("DryRun", "wireguard_interface").Msg("Would run: " + cmd.String())
 	}
 	return nil
 }

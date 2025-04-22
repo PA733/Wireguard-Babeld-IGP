@@ -41,3 +41,5 @@ bin/*
 
 # Static File
 pkg/server/static/dist/*
+
+certs/*

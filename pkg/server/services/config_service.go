@@ -144,8 +144,8 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 
 		IPv4Address := strings.Replace(s.config.Network.IPv4Template, "{node}", fmt.Sprintf("%d", node.ID), -1)
 		IPv4Address = strings.Replace(IPv4Address, "{peer}", fmt.Sprintf("%d", peer.ID), -1)
-		IPv6Address := strings.Replace(s.config.Network.IPv6Template, "{node:x}", fmt.Sprintf("%x", node.ID), -1)
-		IPv6Address = strings.Replace(IPv6Address, "{peer:x}", fmt.Sprintf("%x", peer.ID), -1)
+		IPv6Address := strings.Replace(s.config.Network.IPv6Template, "{node}", fmt.Sprintf("%d", node.ID), -1)
+		IPv6Address = strings.Replace(IPv6Address, "{peer}", fmt.Sprintf("%d", peer.ID), -1)
 
 		// 准备模板数据
 		data := struct {
@@ -178,9 +178,28 @@ func (s *ConfigService) generateWireGuardConfig(node *types.NodeConfig, peers []
 			PublicKey: peer.PublicKey,
 			AllowedIPs: fmt.Sprintf("%s,%s",
 				strings.Replace(s.config.Network.IPv4NodeTemplate, "{node}", fmt.Sprintf("%d", peer.ID), -1),
-				strings.Replace(s.config.Network.IPv6NodeTemplate, "{node:x}", fmt.Sprintf("%x", peer.ID), -1)),
-			Endpoint: fmt.Sprintf("%s:%d", string(peer.Endpoints[0]), wgConn.Port),
-			ID:       peer.ID,
+				strings.Replace(s.config.Network.IPv6NodeTemplate, "{node}", fmt.Sprintf("%d", peer.ID), -1)),
+			Endpoint: func() string {
+				var endpoints []string
+				if err := json.Unmarshal([]byte(peer.Endpoints), &endpoints); err != nil {
+					s.logger.Error().Err(err).Str("endpoints", peer.Endpoints).Msg("Failed to unmarshal endpoints")
+					return fmt.Sprintf("error:%d", wgConn.Port)
+				}
+				if len(endpoints) == 0 {
+					s.logger.Warn().Str("endpoints", peer.Endpoints).Msg("No endpoints found")
+					return fmt.Sprintf("unknown:%d", wgConn.Port)
+				}
+				// 如果 endpoint 是 v4
+				if strings.Contains(endpoints[0], ".") {
+					return fmt.Sprintf("%s:%d", endpoints[0], wgConn.Port)
+				}
+				// 如果 endpoint 是 v6
+				if strings.Contains(endpoints[0], ":") {
+					return fmt.Sprintf("[%s]:%d", endpoints[0], wgConn.Port)
+				}
+				return fmt.Sprintf("%s:%d", endpoints[0], wgConn.Port)
+			}(),
+			ID: peer.ID,
 		}
 		data.Peer = peerData
 
@@ -234,7 +253,7 @@ func (s *ConfigService) generateBabeldConfig(node *types.NodeConfig, peers []*ty
 
 	// 添加 IPv6 路由
 	data.IPv6Routes = append(data.IPv6Routes, struct{ Network, PrefixLen, Metric string }{
-		Network:   strings.Replace(s.config.Network.IPv6NodeTemplate, "{node:x}", fmt.Sprintf("%x", node.ID), -1),
+		Network:   strings.Replace(s.config.Network.IPv6NodeTemplate, "{node}", fmt.Sprintf("%x", node.ID), -1),
 		PrefixLen: "80",
 		Metric:    "128",
 	})

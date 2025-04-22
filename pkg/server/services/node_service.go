@@ -62,6 +62,7 @@ func (s *NodeService) HandleListNodes(c *gin.Context) {
 
 func (s *NodeService) HandleCreateNode(c *gin.Context) {
 	var req struct {
+		ID       int    `json:"id"`
 		Name     string `json:"name" binding:"required"`
 		Endpoint string `json:"endpoint" binding:"required"`
 	}
@@ -69,6 +70,15 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
+	}
+
+	// 如果用户指定了ID，检查该ID是否已存在
+	if req.ID > 0 {
+		existingNode, err := s.GetNode(req.ID)
+		if err == nil && existingNode != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("节点ID %d 已存在", req.ID)})
+			return
+		}
 	}
 
 	// 生成节点配置
@@ -90,7 +100,7 @@ func (s *NodeService) HandleCreateNode(c *gin.Context) {
 	}
 	config := &types.NodeConfig{
 		// 基本信息
-		ID:        0, // 自增
+		ID:        req.ID, // 使用用户指定的ID，如果为0则自增
 		Name:      req.Name,
 		Token:     token,
 		Peers:     string(peersBytes), // To-Do 添加预设节点
